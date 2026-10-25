@@ -7,7 +7,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(FetchContent)
 set(TRANSCRIBE_CPP_TAG 4d7c1ccefd39e5a9ea36cca5f8fefc6dcc14b99b CACHE STRING "transcribe.cpp commit or branch")
-set(IMGUI_TAG v1.91.8 CACHE STRING "Dear ImGui tag")
+set(IMGUI_TAG v1.93.0 CACHE STRING "Dear ImGui tag")
 FetchContent_Declare(transcribe_cpp
     GIT_REPOSITORY https://github.com/handy-computer/transcribe.cpp
     GIT_TAG ${TRANSCRIBE_CPP_TAG}
