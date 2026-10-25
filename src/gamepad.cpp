@@ -8,8 +8,36 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <algorithm>
 
-uint16_t Gamepad::parseButton(const std::string& name) {
+// Kernel headers before 6.17 lack these.
+#ifndef BTN_GRIPL
+#define BTN_GRIPL  0x224
+#define BTN_GRIPR  0x225
+#define BTN_GRIPL2 0x226
+#define BTN_GRIPR2 0x227
+#endif
+
+static constexpr uint16_t kValveVendor = 0x28DE;
+static constexpr uint16_t kMicrosoftVendor = 0x045E;
+
+struct BackButton {
+    const char* name;
+    uint16_t code;
+    uint16_t legacy_valve;
+    uint16_t legacy_xbox;
+};
+
+// Linux 6.17 moved hid-steam (Deck) and xpad (Elite paddles) to BTN_GRIP*.
+// Older kernels used BTN_TRIGGER_HAPPY1-4 and 5-8, which other drivers use for other buttons.
+static constexpr BackButton kBackButtons[] = {
+    {"L4", BTN_GRIPL, BTN_TRIGGER_HAPPY1, BTN_TRIGGER_HAPPY7},
+    {"R4", BTN_GRIPR, BTN_TRIGGER_HAPPY2, BTN_TRIGGER_HAPPY5},
+    {"L5", BTN_GRIPL2, BTN_TRIGGER_HAPPY3, BTN_TRIGGER_HAPPY8},
+    {"R5", BTN_GRIPR2, BTN_TRIGGER_HAPPY4, BTN_TRIGGER_HAPPY6},
+};
+
+static uint16_t standardButton(const std::string& name) {
     if (name == "A")      return BTN_SOUTH;
     if (name == "B")      return BTN_EAST;
     if (name == "X")      return BTN_WEST;
@@ -23,10 +51,6 @@ uint16_t Gamepad::parseButton(const std::string& name) {
     if (name == "guide")  return BTN_MODE;
     if (name == "L3")     return BTN_THUMBL;
     if (name == "R3")     return BTN_THUMBR;
-    if (name == "L4")     return BTN_TRIGGER_HAPPY13;
-    if (name == "L5")     return BTN_TRIGGER_HAPPY14;
-    if (name == "R4")     return BTN_TRIGGER_HAPPY15;
-    if (name == "R5")     return BTN_TRIGGER_HAPPY16;
 
     char* end = nullptr;
     unsigned long code = strtoul(name.c_str(), &end, 10);
@@ -34,6 +58,27 @@ uint16_t Gamepad::parseButton(const std::string& name) {
         return static_cast<uint16_t>(code);
 
     return 0;
+}
+
+std::vector<uint16_t> gamepadButtonCodes(const std::string& name, uint16_t vendor) {
+    for (const auto& b : kBackButtons) {
+        if (name != b.name) continue;
+        if (vendor == kValveVendor) return {b.code, b.legacy_valve};
+        if (vendor == kMicrosoftVendor) return {b.code, b.legacy_xbox};
+        return {b.code};
+    }
+    uint16_t code = standardButton(name);
+    if (code == 0) return {};
+    return {code};
+}
+
+static uint16_t deviceVendor(const std::string& path) {
+    int fd = ::open(path.c_str(), O_RDONLY | O_NONBLOCK);
+    if (fd < 0) return 0;
+    input_id id = {};
+    ioctl(fd, EVIOCGID, &id);
+    ::close(fd);
+    return id.vendor;
 }
 
 std::string Gamepad::findController() {
@@ -80,8 +125,7 @@ std::string Gamepad::findController() {
 }
 
 bool Gamepad::init(const std::string& button) {
-    button_ = parseButton(button);
-    if (button_ == 0) {
+    if (gamepadButtonCodes(button, 0).empty()) {
         fprintf(stderr, "gamepad: unknown button '%s'\n", button.c_str());
         return false;
     }
@@ -98,19 +142,22 @@ bool Gamepad::init(const std::string& button) {
         return false;
     }
 
+    path_ = path;
+    codes_ = gamepadButtonCodes(button, deviceVendor(path));
     fprintf(stderr, "gamepad: listening on %s for %s\n", path.c_str(), button.c_str());
     return true;
 }
 
 void Gamepad::close() {
     if (fd_ >= 0) { ::close(fd_); fd_ = -1; }
+    path_.clear();
 }
 
 int Gamepad::readEvent() {
     struct input_event ev;
     while (::read(fd_, &ev, sizeof(ev)) == sizeof(ev)) {
         if (ev.type != EV_KEY) continue;
-        if (ev.code != button_) continue;
+        if (std::find(codes_.begin(), codes_.end(), ev.code) == codes_.end()) continue;
 
         if (ev.value == 1 && !active_) {
             active_ = true;

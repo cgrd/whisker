@@ -9,6 +9,9 @@ struct ButtonBit;
 // 1=pressed, 0=released, -1=not an input report or unknown button
 int deckButtonState(const uint8_t* report, size_t len, const std::string& button);
 
+// -1 if no Deck controller is streaming input reports
+int openDeckControllerNode(int flags);
+
 class Deckpad {
 public:
     bool init(const std::string& button);
@@ -24,6 +27,4 @@ private:
     int fd_ = -1;
     const ButtonBit* button_ = nullptr;
     bool active_ = false;
-
-    static int findReportingNode();
 };

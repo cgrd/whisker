@@ -63,7 +63,7 @@ bool Deckpad::handlesButton(const std::string& button) {
 }
 
 // Several hidraw nodes share the Deck's VID/PID; only one streams input reports.
-int Deckpad::findReportingNode() {
+int openDeckControllerNode(int flags) {
     glob_t g;
     if (glob("/sys/class/hidraw/*/device/uevent", 0, nullptr, &g) != 0) return -1;
 
@@ -74,7 +74,7 @@ int Deckpad::findReportingNode() {
         std::string node = g.gl_pathv[i];
         node = "/dev/" + node.substr(strlen("/sys/class/hidraw/"),
                                      node.find("/device/") - strlen("/sys/class/hidraw/"));
-        int fd = ::open(node.c_str(), O_RDONLY | O_NONBLOCK);
+        int fd = ::open(node.c_str(), flags | O_NONBLOCK);
         if (fd < 0) {
             fprintf(stderr, "deckpad: cannot open %s: %s\n", node.c_str(), strerror(errno));
             continue;
@@ -112,7 +112,7 @@ bool Deckpad::init(const std::string& button) {
     const ButtonBit* b = lookupButton(button);
     if (!b) return false;
 
-    fd_ = findReportingNode();
+    fd_ = openDeckControllerNode(O_RDONLY);
     if (fd_ < 0) return false;
 
     button_ = b;
