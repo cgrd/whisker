@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 PREFIX ?= $(HOME)/.local
 BUILD_DIR := build
+CMAKE_ARGS ?=
 BASE ?= $(shell git rev-parse --verify -q origin/main >/dev/null && echo origin/main || echo main)
 SHELL_SCRIPTS := $(wildcard *.sh scripts/*.sh appimage/*.sh) appimage/AppRun $(wildcard .githooks/*)
 export PATH := $(CURDIR)/.venv/bin:$(PATH)
@@ -9,7 +10,7 @@ export PATH := $(CURDIR)/.venv/bin:$(PATH)
         deck-test desktop-smoke install uninstall enable clean
 
 all:
-	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(PREFIX)
+	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(PREFIX) $(CMAKE_ARGS)
 	cmake --build $(BUILD_DIR) -j$$(nproc)
 
 test: test-cpp test-python
@@ -47,6 +48,7 @@ check: test lint conventions decky-check
 # Adds the release container build and the install script test, like CI
 check-full: check
 	./build-container.sh
+	scripts/check-cpu-baseline.sh dist/Whisker-x86_64.AppImage
 	podman run --rm -v "$(CURDIR):/src:ro" -e WHISKER_RELEASE_URL=file:///src/dist archlinux:base \
 		bash -c 'pacman -Sy --noconfirm --needed curl python libpipewire vulkan-icd-loader wayland >/dev/null && /src/scripts/test-install.sh'
 

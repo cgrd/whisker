@@ -23,6 +23,21 @@ set(TRANSCRIBE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(TRANSCRIBE_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(TRANSCRIBE_USE_SYSTEM_BLAS OFF CACHE BOOL "" FORCE)
 
+# ggml defaults to -march=native, which made CI builds depend on the runner's CPU and
+# ship AVX-512 code that crashes elsewhere. Runtime dispatch (GGML_CPU_ALL_VARIANTS)
+# needs shared ggml backends, which the static linking policy rules out.
+option(WHISKER_NATIVE "Optimize for this machine's CPU instead of the x86-64-v3 baseline" OFF)
+set(GGML_NATIVE ${WHISKER_NATIVE} CACHE BOOL "" FORCE)
+if(NOT WHISKER_NATIVE)
+    foreach(_flag GGML_SSE42 GGML_AVX GGML_AVX2 GGML_BMI2 GGML_FMA GGML_F16C)
+        set(${_flag} ON CACHE BOOL "" FORCE)
+    endforeach()
+    foreach(_flag GGML_AVX_VNNI GGML_AVX512 GGML_AVX512_VBMI GGML_AVX512_VNNI GGML_AVX512_BF16
+                  GGML_AMX_TILE GGML_AMX_INT8 GGML_AMX_BF16)
+        set(${_flag} OFF CACHE BOOL "" FORCE)
+    endforeach()
+endif()
+
 FetchContent_GetProperties(transcribe_cpp)
 if(NOT transcribe_cpp_POPULATED)
     FetchContent_Populate(transcribe_cpp)
