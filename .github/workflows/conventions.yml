@@ -21,7 +21,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          # The base branch tip, which is where this workflow file comes from. pull_request.base.sha
+          # can lag behind it, which would pair this workflow with an older checker script.
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Fetch the PR's objects without checking them out
