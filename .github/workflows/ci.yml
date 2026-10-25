@@ -65,11 +65,11 @@ jobs:
           fi
       - name: Install, reinstall, uninstall
         env:
-          WHISKER_RELEASE_URL: file://${{ github.workspace }}/dist
           WHISKER_SKIP_SYSTEMD: 1
           WHISKER_SKIP_MODEL: 1
           APPIMAGE_EXTRACT_AND_RUN: 1
-        run: bash scripts/test-install.sh
+        # github.workspace is the host path; inside the container the checkout lives elsewhere
+        run: WHISKER_RELEASE_URL="file://$PWD/dist" bash scripts/test-install.sh
 
   unit-python:
     runs-on: ubuntu-24.04
