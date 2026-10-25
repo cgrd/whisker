@@ -776,19 +776,19 @@ static void drawPedalsTab(Config& cfg, std::vector<ModelState>& model_states,
     float avail = ImGui::GetContentRegionAvail().x;
     float col_w = (avail - 2 * ImGui::GetStyle().ItemSpacing.x) / 3.0f;
 
-    ImGui::BeginChild("left_pedal", ImVec2(col_w, 0), ImGuiChildFlags_Border | ImGuiChildFlags_AutoResizeY);
+    ImGui::BeginChild("left_pedal", ImVec2(col_w, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
     drawPedalConfig("Left", cfg.pedals[0]);
     ImGui::EndChild();
 
     ImGui::SameLine();
 
-    ImGui::BeginChild("center_pedal", ImVec2(col_w, 0), ImGuiChildFlags_Border | ImGuiChildFlags_AutoResizeY);
+    ImGui::BeginChild("center_pedal", ImVec2(col_w, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
     drawPedalConfig("Center", cfg.pedals[1]);
     ImGui::EndChild();
 
     ImGui::SameLine();
 
-    ImGui::BeginChild("right_pedal", ImVec2(col_w, 0), ImGuiChildFlags_Border | ImGuiChildFlags_AutoResizeY);
+    ImGui::BeginChild("right_pedal", ImVec2(col_w, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
     drawPedalConfig("Right", cfg.pedals[2]);
     ImGui::EndChild();
 }
@@ -970,7 +970,7 @@ int settingsRun(const std::string& config_path) {
         float sidebar_w = 140.0f;
         float bottom_h = 64.0f;
 
-        ImGui::BeginChild("sidebar", ImVec2(sidebar_w, -bottom_h), ImGuiChildFlags_Border, ImGuiWindowFlags_NoScrollbar);
+        ImGui::BeginChild("sidebar", ImVec2(sidebar_w, -bottom_h), ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar);
         ImGui::Spacing();
 
         const char* tabs[] = {"Audio", "Pedals", "History"};
@@ -990,7 +990,7 @@ int settingsRun(const std::string& config_path) {
 
         ImGui::SameLine();
 
-        ImGui::BeginChild("content", ImVec2(0, -bottom_h), ImGuiChildFlags_Border);
+        ImGui::BeginChild("content", ImVec2(0, -bottom_h), ImGuiChildFlags_Borders);
 
         switch (active_tab) {
         case 0: drawAudioTab(cfg, sources, selected_source); break;
