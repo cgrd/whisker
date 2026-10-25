@@ -169,8 +169,8 @@ add_executable(whisker
     src/pedal.cpp
     src/keyboard.cpp
     src/hotkey.cpp
-    src/gamepad.cpp
-    src/deckpad.cpp
+    src/buttons.cpp
+    src/controllers.cpp
     src/command.cpp
     src/spawn.cpp
     src/audio.cpp

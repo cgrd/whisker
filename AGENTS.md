@@ -6,16 +6,17 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, code style and review 
 
 * `src/`: the `whisker` daemon (C++17), one module per concern
   * `main.cpp` event loop and CLI; `config.*` YAML config; `dictation.*` text post-processing
-  * triggers: `pedal.*` (Elgato pedal, hidraw), `hotkey.*` (keyboard, evdev), `gamepad.*` (evdev), `deckpad.*` (Steam Deck back buttons, hidraw), `command.*` (Unix socket)
+  * triggers: `pedal.*` (Elgato pedal, hidraw), `hotkey.*` (keyboard, evdev), `controllers.*` (every gamepad: Valve devices over hidraw, others over evdev, hotplug, button capture), `buttons.*` (pure report decoders and chords), `command.*` (Unix socket)
+  * `haptic.*` rumbles the controller that triggered the recording
   * output: `keyboard.*` (uinput virtual keyboard), `clipboard.*`
   * audio: `audio.*` (PipeWire capture), `audiocue.*`, `stt.*` (transcribe.cpp), `history.*`
   * UI: `overlay*.cpp` (backend chosen per recording), `settings.*` (SDL2 + Dear ImGui), `tray.*` (StatusNotifierItem over sd-bus)
 * `tests/`: C++ unit tests (plain asserts, `tests/check.h`) and CLI smoke tests, run by ctest
 * `decky/`: Decky Loader plugin. `main.py` is the Python backend, `src/index.tsx` the UI, `dist/index.js` its committed build (`make decky`), `tests/` pytest
 * `appimage/`: AppRun, service installer, AppImage packaging; `Containerfile` + `build-container.sh` produce release builds
-* `scripts/`: user installer (`install.sh`), release packaging, CI helpers (`check_conventions.py`, `review-flags.sh`, `check-dco.sh`), `deck-test.sh` / `desktop-smoke.sh`
+* `scripts/`: user installer (`install.sh`), release packaging, CI helpers (`check_conventions.py`, `review-flags.sh`, `check-dco.sh`), `deck-test.sh` / `desktop-smoke.sh`, `controller-capture.py` (dumps changed report bits for new controllers)
 * `.claude/`: shared Claude Code permissions and hooks (`hooks/guard.py` blocks edits to generated files, skipped hooks, unsigned commits, force pushes and secrets)
-* `docs/`: troubleshooting, Steam Deck testing notes, maintainer playbook
+* `docs/`: troubleshooting, Steam Deck testing notes, adding a controller, maintainer playbook
 
 ## Rules agents break
 
@@ -40,14 +41,20 @@ A change is done when all of these hold:
 * `make check` passes locally, and `make check-full` for changes to the build, packaging, `scripts/install.sh` or the AppImage
 * New pure logic has tests in `tests/` (registered in `tests/CMakeLists.txt`) or `decky/tests/`
 * Behavior changes are reflected in `README.md`, `docs/`, the sample `config.yaml` and the Decky plugin
-* Hardware-facing changes (`src/deckpad*`, `src/overlay*`, `src/pedal*`, `src/keyboard*`, `decky/`, the service unit) say in the PR how they were tested on real hardware, or that they weren't
+* Hardware-facing changes (`src/controllers*`, `src/buttons*`, `src/haptic*`, `src/overlay*`, `src/pedal*`, `src/keyboard*`, `decky/`, the service unit) say in the PR how they were tested on real hardware, or that they weren't
 * The PR body follows the template and CI is green
 
 ## Known pitfalls and rejected approaches
 
 Don't retry these without new information.
 
-* **Deck input in Game Mode.** Steam owns the controller, so evdev sees nothing from it. Decky's `SteamClient.Input.RegisterForControllerInputMessages` only fires while the Steam UI has focus and stops once a game runs. The working approach is reading raw HID reports from `/dev/hidraw*` (VID 28DE, PID 1205; only one node streams input reports): 64-byte reports with `data[0] == 0x01` and `data[2] == 0x09`, buttons in little-endian words at byte 8 (L5 bit 15, R5 bit 16, A bit 7) and byte 12 (L4 bit 9, R4 bit 10). Tested in `tests/test_deckpad.cpp`.
+* **Valve controller input in Game Mode.** Steam owns the Deck and the Steam Controller, and hid-steam hides their evdev gamepad nodes while Steam holds hidraw, so evdev sees nothing from them. Decky's `SteamClient.Input.RegisterForControllerInputMessages` only fires while the Steam UI has focus and stops once a game runs. The working approach is reading raw HID reports from every Valve `/dev/hidraw*` node with a decoder in `src/buttons.cpp` (tested with byte fixtures in `tests/test_buttons.cpp`):
+  * Deck (28DE:1205): 64-byte reports with `data[0] == 0x01` and `data[2] == 0x09`, buttons in a little-endian u64 at byte 8 (A bit 7, L5 bit 15, R5 bit 16, L4 bit 41, R4 bit 42). Only one of its hidraw nodes streams.
+  * 2026 Steam Controller (1302 USB, 1303 BLE, 1304 puck, 1305 Steam Machine): state reports `0x42` (54 bytes on the puck), `0x45` (BLE) or `0x47`, buttons in a little-endian u32 at byte 2 (A bit 0, R4 bit 7, R5 bit 8, L4 bit 17, L5 bit 18). Bits 28 and 29 are grip touch sensors, not buttons. The puck has one hidraw interface per controller slot (interfaces 2 to 6); open all of them. Reports `0x43`, `0x46`, `0x79` and `0x7b` are battery and connection status.
+  * Never read Valve devices over evdev as well: Steam's virtual pad (28DE:11FF) and hid-steam's own nodes would double every press.
+* **Button names** follow Steam's, by position: L4/R4 are the upper back buttons and L5/R5 the lower ones on the Deck and the Steam Controller (`button_back_left_upper` = L4, `button_back_left` = L5). A user who feels a mismatch is holding a different shell, not a different button.
+* **Back paddles on other controllers** use `BTN_GRIPL`/`GRIPL2`/`GRIPR`/`GRIPR2` since Linux 6.17. xpad used `BTN_TRIGGER_HAPPY5-8` before that, which other drivers use for unrelated buttons, so that fallback is limited to Microsoft's vendor ID.
+* **Hotplug** retries a node on `IN_ATTRIB` because udev sets permissions after the node appears.
 * **Per-game Steam Input bindings** can steal the trigger button (Chiaki bound L5 to "end session"). Users must leave the button unbound per game.
 * **Overlay under Gamescope.** Wayland layer-shell surfaces are never composited: they land in Gamescope's `externalOverlayWindow` slot, which MangoApp already holds via X11. The working approach is a full-width X11 window with the `STEAM_OVERLAY` and `GAMESCOPE_NO_FOCUS` atoms. Don't try layer-shell on Gamescope.
 * **Overlay backend selection** happens per recording: a connectable `gamescope-0` (or `$GAMESCOPE_WAYLAND_DISPLAY`) socket in `$XDG_RUNTIME_DIR` selects the Gamescope backend on `$DISPLAY` (default `:0`); otherwise layer-shell on `$WAYLAND_DISPLAY`, then any other `wayland-*` socket; otherwise no overlay. Tested in `tests/test_overlay.cpp`.

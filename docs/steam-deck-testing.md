@@ -49,9 +49,9 @@ The plugin exposes every config option and edits `~/.config/pedal-stt/config.yam
 
 ## Game Mode Input
 
-Steam owns the controller in Game Mode, so no evdev events reach userspace from the back buttons. Whisker reads the controller's raw HID reports from `/dev/hidraw*` instead (`src/deckpad.cpp`). It sets `trigger_button: L4`, `L5`, `R4` or `R5` and reads the same reports in Game Mode and Desktop Mode, alongside whatever Steam Input does with the button. The journal shows `deckpad: found Steam Deck controller at /dev/hidrawN` and `deckpad: listening for L5` on startup.
+Steam owns the controllers in Game Mode, so no evdev events reach userspace from Valve devices. Whisker reads the raw HID reports of the Deck and the Steam Controller from `/dev/hidraw*` instead (`src/controllers.cpp`, decoders in `src/buttons.cpp`), the same way in Game Mode and Desktop Mode, alongside whatever Steam Input does with the button. The journal shows `controller: listening for L5` and `controller: Steam Deck streaming on /dev/hidrawN` on startup, and `controller: Steam Controller (puck) streaming on /dev/hidrawN` once a wireless Steam Controller sends input.
 
-A Unix socket (`/run/user/1000/whisker.sock`) also accepts `start\n` and `stop\n`. The Decky Record button uses it, and it's the easiest way to test without pressing anything:
+A Unix socket (`/run/user/1000/whisker.sock`) also accepts `start\n` and `stop\n`, and `capture\n`, which waits up to 10 seconds for a button or chord and replies with it and the device name. The Decky Record button uses it, and it's the easiest way to test without pressing anything:
 
 ```bash
 python3 -c "import socket; s=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.connect('/run/user/1000/whisker.sock'); s.sendall(b'start\n'); s.close()"
@@ -103,4 +103,4 @@ Stop them with `systemctl --user stop keepawake kdeinhibit xactivity`.
 
 ## Automated check
 
-`DECK_HOST=<deck-host> make deck-test` copies `dist/` builds to the Deck, installs the AppImage and the Decky plugin, restarts the service twice and reports PASS/FAIL for service state, `KillMode=mixed`, new core dumps, journal errors, the command socket, the deckpad controller and the mic volume.
+`DECK_HOST=<deck-host> make deck-test` copies `dist/` builds to the Deck, installs the AppImage and the Decky plugin, restarts the service twice and reports PASS/FAIL for service state, `KillMode=mixed`, new core dumps, journal errors, the command socket, the Steam Deck controller and the mic volume.

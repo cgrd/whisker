@@ -4,35 +4,37 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
-struct InputDeviceInfo {
+enum class RumbleKind { None, Evdev, DeckFeature, TritonOutput };
+
+struct InputDevice {
+    std::string path;
+    std::string name;
     std::string sysfs_path;
+    int fd = -1;
+    bool hidraw = false;
+    bool streaming = false;
     uint16_t vendor = 0;
     uint16_t product = 0;
-    bool rumble = false;
+    uint32_t buttons = 0;
+    RumbleKind rumble = RumbleKind::None;
+    int effect_id = -1;
 };
 
-enum class HapticTarget { TriggerPad, DeckController, None };
+bool isVirtualInput(const InputDevice& dev);
+RumbleKind hidrawRumbleKind(uint16_t product);
 
-bool isVirtualInput(const InputDeviceInfo& dev);
-HapticTarget chooseHapticTarget(const InputDeviceInfo* trigger, bool deck_present);
+// The trigger device if it can rumble, otherwise the Steam Deck's built-in controller,
+// otherwise -1. trigger is an index into devices or -1.
+int chooseHapticDevice(const std::vector<InputDevice>& devices, int trigger);
 
 using DeckFeatureReport = std::array<uint8_t, 65>;
 DeckFeatureReport deckRumbleReport(uint16_t left_speed, uint16_t right_speed);
 
-class Haptic {
-public:
-    bool init(const std::string& trigger_event_path);
-    void shutdown();
-    // Blocks for duration_ms so every pulse ends with an explicit stop.
-    void pulse(int duration_ms, int strength);
+using TritonRumbleReport = std::array<uint8_t, 10>;
+TritonRumbleReport tritonRumbleReport(uint16_t left_speed, uint16_t right_speed);
 
-private:
-    HapticTarget target_ = HapticTarget::None;
-    int fd_ = -1;
-    int effect_id_ = -1;
-
-    bool initEvdev(const std::string& path);
-    void setRumble(int duration_ms, uint16_t strength);
-    void stopRumble();
-};
+// Blocks for duration_ms so every pulse ends with an explicit stop.
+void hapticPulse(InputDevice& dev, int duration_ms, int strength);
+void hapticRelease(InputDevice& dev);

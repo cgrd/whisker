@@ -35,7 +35,7 @@ jobs:
           label "open PR limit"   d93f0b "Closed over the open PR limit"
           label decky             1d76db "decky/"
           label overlay           1d76db "src/overlay*"
-          label deck-input        1d76db "src/deckpad*"
+          label deck-input        1d76db "src/controllers*, src/buttons*, src/haptic*"
           label docs              0075ca "Documentation"
           label ci                5319e7 ".github/"
           label tests             c5def5 "tests/"

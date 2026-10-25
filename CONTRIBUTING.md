@@ -54,7 +54,7 @@ ctest --test-dir build   # C++ tests only
 
 The Decky UI is TypeScript in `decky/src/`. Rebuild the committed bundle with `make decky` (needs Node and pnpm) and commit `decky/dist/index.js` with your change; `make check` and CI fail if the bundle doesn't match the source.
 
-Tests live in `tests/` (C++, plain asserts in `tests/check.h`, registered in `tests/CMakeLists.txt`) and `decky/tests/` (pytest). They cover pure logic only: config parsing, key combos, dictation text processing, submit key handling, Steam Deck HID report decoding and overlay backend selection. Hardware paths are tested by hand.
+Tests live in `tests/` (C++, plain asserts in `tests/check.h`, registered in `tests/CMakeLists.txt`) and `decky/tests/` (pytest). They cover pure logic only: config parsing, key combos, dictation text processing, submit key handling, controller report decoding and overlay backend selection. To add a controller, see [docs/controllers.md](docs/controllers.md). Hardware paths are tested by hand.
 
 To build the release AppImage the way CI does: `./build-container.sh` (needs podman). It writes everything to `dist/`. To test the installer against that build instead of the latest GitHub release:
 

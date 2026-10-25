@@ -14,13 +14,37 @@ DEFAULT_MODEL_NAME = "parakeet-unified-en-0.6b-Q8_0.gguf"
 
 PEDAL_NAMES = ("left", "center", "right")
 SUBMIT_KEYS = ("none", "enter", "tab")
+BUTTONS = (
+    "A", "B", "X", "Y", "L1", "R1", "L2", "R2", "L3", "R3", "L4", "L5", "R4", "R5",
+    "select", "start", "guide", "up", "down", "left", "right",
+)
+CAPTURE_TIMEOUT_S = 12
+
+
+def button_chord(path: str, value):
+    if value == "":
+        return value
+    parts = [p.strip() for p in value.split("+")] if isinstance(value, str) else []
+    if not parts or any(p not in BUTTONS for p in parts) or len(set(parts)) != len(parts):
+        raise ValueError(f"{path}: '{value}' is not a button or chord like L3+R3")
+    return "+".join(parts)
+
+
+def parse_capture_reply(line: str) -> dict:
+    line = line.strip()
+    if line == "busy":
+        return {"error": "Whisker is recording, try again"}
+    chord, _, device = line.partition(" ")
+    if not chord:
+        return {"error": "No button pressed"}
+    return {"button": button_chord("capture", chord), "device": device}
 
 TOP_OPTIONS = {
     "model": str,
     "backend": ("vulkan", "cpu"),
     "audio_device": str,
     "trigger_key": str,
-    "trigger_button": str,
+    "trigger_button": button_chord,
     "trigger_mode": ("hold", "toggle"),
     "overlay_position": ("bottom", "top", "bottom-left", "bottom-right", "top-left", "top-right"),
     "submit_key": SUBMIT_KEYS,
@@ -129,6 +153,8 @@ def _option_spec(parts: list[str]):
 
 
 def _coerce(path: str, spec, value):
+    if spec is button_chord:
+        return button_chord(path, value)
     if isinstance(spec, tuple):
         if value not in spec:
             raise ValueError(f"{path}: '{value}' not in {spec}")
@@ -144,6 +170,10 @@ def _coerce(path: str, spec, value):
 
 def _runtime_dir() -> str:
     return f"/run/user/{os.getuid()}"
+
+
+def _socket_path() -> str:
+    return f"{_runtime_dir()}/whisker.sock"
 
 
 def _user_env() -> dict:
@@ -280,9 +310,29 @@ class Plugin:
     async def stop_recording(self) -> bool:
         return await self._send_command("stop")
 
+    async def capture_button(self) -> dict:
+        try:
+            reader, writer = await asyncio.open_unix_connection(_socket_path())
+        except OSError:
+            return {"error": "Whisker isn't running"}
+        try:
+            writer.write(b"capture\n")
+            await writer.drain()
+            line = await asyncio.wait_for(reader.readline(), CAPTURE_TIMEOUT_S)
+        except (OSError, asyncio.TimeoutError) as e:
+            decky.logger.error(f"Button capture failed: {e!r}")
+            return {"error": "No reply from Whisker"}
+        finally:
+            writer.close()
+        try:
+            return parse_capture_reply(line.decode())
+        except ValueError as e:
+            decky.logger.error(str(e))
+            return {"error": "Unknown button"}
+
     async def _send_command(self, cmd: str) -> bool:
         import socket
-        sock_path = f"{_runtime_dir()}/whisker.sock"
+        sock_path = _socket_path()
         for attempt in range(2):
             try:
                 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -327,7 +377,7 @@ class Plugin:
         rc_active, _ = await _run(["systemctl", "--user", "is-active", "whisker"])
         running = rc_active == 0
 
-        sock_path = f"{_runtime_dir()}/whisker.sock"
+        sock_path = _socket_path()
         sock_exists = os.path.exists(sock_path)
 
         model_path = ""

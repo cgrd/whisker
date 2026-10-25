@@ -61,6 +61,7 @@ This keeps your settings (`~/.config/pedal-stt/`) and models and recordings (`~/
 ## Use
 
 * **Steam Deck:** hold the L5 back button, speak, release. Leave L5 unbound in each game's Steam Input layout (or pick another button in the Decky plugin).
+* **Any controller:** the same button works on every connected controller, see [Controllers](#controllers).
 * **Desktop:** hold `ctrl+shift+space`, or the center pedal of an Elgato Stream Deck Pedal.
 * A small overlay shows that it's listening and then shows the text.
 * Say "period", "comma", "question mark" or "new line" to insert punctuation.
@@ -70,6 +71,29 @@ A pedal can also run a program: set `action: exec` with `exec_press` and/or `exe
 Change settings from the Whisker entry in your app menu or tray icon, or from Decky's Quick Access menu on the Deck. Logs: `journalctl --user -u whisker`.
 
 If something doesn't work, see [docs/troubleshooting.md](docs/troubleshooting.md).
+
+## Controllers
+
+`trigger_button` works on every connected controller, including ones you turn on after Whisker starts. Set it to one button or a chord of buttons joined with `+`:
+
+```yaml
+trigger_button: L5      # lower left back button
+trigger_button: L3+R3   # both stick clicks, for controllers without back buttons
+```
+
+A chord starts recording when all its buttons are down on the same controller and stops when any of them comes up. Button names: `A`, `B`, `X`, `Y`, `L1`, `R1`, `L2`, `R2`, `L3`, `R3`, `L4`, `L5`, `R4`, `R5`, `select`, `start`, `guide`, `up`, `down`, `left`, `right`. `L4`/`R4` are the upper back buttons and `L5`/`R5` the lower ones, the same names Steam uses.
+
+The easiest way to pick one is the Decky plugin's "Press the Button You Want": press and release the button or chord on any controller and Whisker saves it.
+
+| Controller | Read through | Status |
+|---|---|---|
+| Steam Deck built-in controller | hidraw | tested |
+| Steam Controller (2026) with the wireless puck | hidraw | button layout captured on a Deck |
+| Steam Controller (2026) over USB, Bluetooth or the Steam Machine receiver | hidraw | untested |
+| Steam Controller (2015), wired or dongle | hidraw | untested, no rumble |
+| Xbox, PlayStation and other gamepads with a Linux driver | evdev | untested; back paddles need Linux 6.17 or newer, except Xbox Elite |
+
+The recording start and stop rumble goes to the controller you pressed. To add a controller, see [docs/controllers.md](docs/controllers.md).
 
 ## Models
 

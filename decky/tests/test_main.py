@@ -111,6 +111,11 @@ def test_set_option_coerces_numbers(config_path):
     ("pedals.left.exec_press", "rm -rf ~"),
     ("pedals.left.exec_release", "x"),
     ("pedals.left.action", "exec"),
+    ("trigger_button", "L6"),
+    ("trigger_button", "L3+L3"),
+    ("trigger_button", "L3+"),
+    ("trigger_button", "l5"),
+    ("trigger_button", 5),
 ])
 def test_set_option_rejects_invalid(config_path, path, value):
     with pytest.raises(ValueError):
@@ -131,3 +136,25 @@ def test_user_env_points_at_the_user_session():
     runtime = f"/run/user/{main.os.getuid()}"
     assert env["XDG_RUNTIME_DIR"] == runtime
     assert env["DBUS_SESSION_BUS_ADDRESS"] == f"unix:path={runtime}/bus"
+
+
+@pytest.mark.parametrize("value, stored", [("L5", "L5"), ("L3+R3", "L3+R3"), ("L1 + R1", "L1+R1"), ("", "")])
+def test_set_option_accepts_buttons_and_chords(config_path, value, stored):
+    set_option("trigger_button", value)
+    assert main.parse_yaml(config_path.read_text())["trigger_button"] == stored
+
+
+@pytest.mark.parametrize("line, reply", [
+    ("L3+R3 Steam Controller (puck)\n", {"button": "L3+R3", "device": "Steam Controller (puck)"}),
+    ("L5 Steam Deck\n", {"button": "L5", "device": "Steam Deck"}),
+    ("\n", {"error": "No button pressed"}),
+    ("", {"error": "No button pressed"}),
+    ("busy\n", {"error": "Whisker is recording, try again"}),
+])
+def test_parse_capture_reply(line, reply):
+    assert main.parse_capture_reply(line) == reply
+
+
+def test_parse_capture_reply_rejects_unknown_buttons():
+    with pytest.raises(ValueError):
+        main.parse_capture_reply("L9 pad\n")

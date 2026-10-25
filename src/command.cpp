@@ -4,8 +4,11 @@
 #include <sys/un.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <cerrno>
 #include <cstdio>
 #include <cstring>
+
+static constexpr size_t kMaxBuffer = 256;
 
 bool CommandSocket::init(const std::string& path) {
     path_ = path;
@@ -39,8 +42,8 @@ void CommandSocket::close() {
     if (!path_.empty()) { ::unlink(path_.c_str()); path_.clear(); }
 }
 
-int CommandSocket::readCommand() {
-    if (server_fd_ < 0) return 0;
+Command CommandSocket::readCommand() {
+    if (server_fd_ < 0) return Command::None;
 
     // Accept new connections
     int newfd = ::accept4(server_fd_, nullptr, nullptr, SOCK_NONBLOCK);
@@ -49,25 +52,34 @@ int CommandSocket::readCommand() {
         client_fd_ = newfd;
     }
 
-    if (client_fd_ < 0) return 0;
+    if (client_fd_ < 0) return Command::None;
 
     char tmp[128];
     ssize_t n = ::read(client_fd_, tmp, sizeof(tmp) - 1);
     if (n > 0) {
         tmp[n] = '\0';
         buf_ += tmp;
+        if (buf_.size() > kMaxBuffer && buf_.find('\n') == std::string::npos) buf_.clear();
     } else if (n == 0) {
         ::close(client_fd_);
         client_fd_ = -1;
     }
 
     auto pos = buf_.find('\n');
-    if (pos == std::string::npos) return 0;
+    if (pos == std::string::npos) return Command::None;
 
     std::string cmd = buf_.substr(0, pos);
     buf_.erase(0, pos + 1);
 
-    if (cmd == "start") return 1;
-    if (cmd == "stop") return -1;
-    return 0;
+    if (cmd == "start") return Command::Start;
+    if (cmd == "stop") return Command::Stop;
+    if (cmd == "capture") return Command::Capture;
+    return Command::None;
+}
+
+void CommandSocket::reply(const std::string& line) {
+    if (client_fd_ < 0) return;
+    std::string msg = line + "\n";
+    if (::send(client_fd_, msg.data(), msg.size(), MSG_NOSIGNAL) < 0)
+        fprintf(stderr, "command: reply failed: %s\n", strerror(errno));
 }
