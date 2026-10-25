@@ -8,9 +8,8 @@ endfunction()
 
 whisker_test(test_config ${CMAKE_SOURCE_DIR}/src/config.cpp)
 whisker_test(test_dictation ${CMAKE_SOURCE_DIR}/src/dictation.cpp)
-whisker_test(test_deckpad ${CMAKE_SOURCE_DIR}/src/deckpad.cpp)
-whisker_test(test_haptic ${CMAKE_SOURCE_DIR}/src/haptic.cpp ${CMAKE_SOURCE_DIR}/src/deckpad.cpp)
-whisker_test(test_gamepad ${CMAKE_SOURCE_DIR}/src/gamepad.cpp)
+whisker_test(test_buttons ${CMAKE_SOURCE_DIR}/src/buttons.cpp)
+whisker_test(test_haptic ${CMAKE_SOURCE_DIR}/src/haptic.cpp)
 whisker_test(test_keyboard ${CMAKE_SOURCE_DIR}/src/keyboard.cpp)
 target_include_directories(test_keyboard PRIVATE ${LIBEVDEV_INCLUDE_DIRS})
 target_link_libraries(test_keyboard PRIVATE ${LIBEVDEV_LIBRARIES})
@@ -29,6 +28,8 @@ set_tests_properties(cli_version PROPERTIES PASS_REGULAR_EXPRESSION "whisker ${P
 add_test(NAME cli_check_sample_config COMMAND whisker --check-config -c ${CMAKE_SOURCE_DIR}/config.yaml)
 add_test(NAME cli_check_bad_config COMMAND whisker --check-config -c ${CMAKE_CURRENT_SOURCE_DIR}/data/bad-combo.yaml)
 set_tests_properties(cli_check_bad_config PROPERTIES WILL_FAIL TRUE)
+add_test(NAME cli_check_bad_button COMMAND whisker --check-config -c ${CMAKE_CURRENT_SOURCE_DIR}/data/bad-button.yaml)
+set_tests_properties(cli_check_bad_button PROPERTIES WILL_FAIL TRUE)
 
 whisker_test(test_spawn ${CMAKE_SOURCE_DIR}/src/spawn.cpp)
 

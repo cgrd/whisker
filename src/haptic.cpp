@@ -1,32 +1,47 @@
 // SPDX-License-Identifier: MIT
 #include "haptic.h"
-#include "deckpad.h"
 #include <linux/hidraw.h>
 #include <linux/input.h>
-#include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <algorithm>
 #include <chrono>
 #include <cerrno>
-#include <climits>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <thread>
 
 static constexpr uint16_t kValveVendor = 0x28DE;
 static constexpr uint16_t kSteamVirtualPad = 0x11FF;
+static constexpr uint16_t kSteamDeck = 0x1205;
 static constexpr uint8_t kDeckRumbleCmd = 0xEB;
+static constexpr uint8_t kTritonRumbleReport = 0x80;
+// The controller stops a rumble report on its own unless it is resent (SDL resends every 40 ms).
+static constexpr int kTritonResendMs = 40;
 
-bool isVirtualInput(const InputDeviceInfo& dev) {
+bool isVirtualInput(const InputDevice& dev) {
     if (dev.vendor == kValveVendor && dev.product == kSteamVirtualPad) return true;
     return dev.sysfs_path.find("/devices/virtual/") != std::string::npos;
 }
 
-HapticTarget chooseHapticTarget(const InputDeviceInfo* trigger, bool deck_present) {
-    if (trigger && trigger->rumble && !isVirtualInput(*trigger)) return HapticTarget::TriggerPad;
-    if (deck_present) return HapticTarget::DeckController;
-    return HapticTarget::None;
+RumbleKind hidrawRumbleKind(uint16_t product) {
+    switch (product) {
+    case kSteamDeck: return RumbleKind::DeckFeature;
+    case 0x1302:
+    case 0x1303:
+    case 0x1304:
+    case 0x1305: return RumbleKind::TritonOutput;
+    }
+    return RumbleKind::None;
+}
+
+int chooseHapticDevice(const std::vector<InputDevice>& devices, int trigger) {
+    if (trigger >= 0 && devices[trigger].rumble != RumbleKind::None) return trigger;
+    for (size_t i = 0; i < devices.size(); ++i) {
+        const auto& d = devices[i];
+        if (d.hidraw && d.product == kSteamDeck && d.streaming) return static_cast<int>(i);
+    }
+    return -1;
 }
 
 // Same layout as hid-steam's steam_haptic_rumble(), behind report ID 0.
@@ -42,130 +57,85 @@ DeckFeatureReport deckRumbleReport(uint16_t left_speed, uint16_t right_speed) {
     return r;
 }
 
-static bool hasBit(const unsigned long* bits, int bit) {
-    constexpr int kBitsPerLong = sizeof(unsigned long) * 8;
-    return bits[bit / kBitsPerLong] & (1UL << (bit % kBitsPerLong));
+// MsgHapticRumble from SDL's controller_structs.h: type, intensity, then speed and gain per side.
+TritonRumbleReport tritonRumbleReport(uint16_t left_speed, uint16_t right_speed) {
+    TritonRumbleReport r{};
+    r[0] = kTritonRumbleReport;
+    r[4] = left_speed & 0xFF;
+    r[5] = left_speed >> 8;
+    r[7] = right_speed & 0xFF;
+    r[8] = right_speed >> 8;
+    return r;
 }
 
-static bool describeEventNode(const std::string& path, InputDeviceInfo& info) {
-    int fd = ::open(path.c_str(), O_RDONLY | O_NONBLOCK);
-    if (fd < 0) return false;
-
-    input_id id = {};
-    unsigned long ffbits[FF_MAX / (sizeof(unsigned long) * 8) + 1] = {};
-    bool ok = ioctl(fd, EVIOCGID, &id) >= 0;
-    info.vendor = id.vendor;
-    info.product = id.product;
-    info.rumble = ioctl(fd, EVIOCGBIT(EV_FF, sizeof(ffbits)), ffbits) >= 0 && hasBit(ffbits, FF_RUMBLE);
-    ::close(fd);
-
-    std::string sys = "/sys/class/input/" + path.substr(path.rfind('/') + 1) + "/device";
-    char resolved[PATH_MAX];
-    if (realpath(sys.c_str(), resolved)) info.sysfs_path = resolved;
-    return ok;
-}
-
-bool Haptic::init(const std::string& trigger_event_path) {
-    InputDeviceInfo trigger;
-    bool has_trigger = !trigger_event_path.empty() && describeEventNode(trigger_event_path, trigger);
-
-    const InputDeviceInfo* trigger_info = has_trigger ? &trigger : nullptr;
-
-    int deck_fd = -1;
-    target_ = chooseHapticTarget(trigger_info, false);
-    if (target_ == HapticTarget::None) {
-        deck_fd = openDeckControllerNode(O_RDWR);
-        target_ = chooseHapticTarget(trigger_info, deck_fd >= 0);
-    }
-    switch (target_) {
-    case HapticTarget::TriggerPad:
-        return initEvdev(trigger_event_path);
-    case HapticTarget::DeckController:
-        fd_ = deck_fd;
-        fprintf(stderr, "haptic: using the Steam Deck controller\n");
-        return true;
-    case HapticTarget::None:
-        fprintf(stderr, "haptic: no physical rumble device for the trigger\n");
-        return false;
-    }
-    return false;
-}
-
-bool Haptic::initEvdev(const std::string& path) {
-    fd_ = ::open(path.c_str(), O_RDWR | O_NONBLOCK);
-    if (fd_ < 0) {
-        fprintf(stderr, "haptic: failed to open %s: %s\n", path.c_str(), strerror(errno));
-        return false;
-    }
-
-    ff_effect effect = {};
-    effect.type = FF_RUMBLE;
-    effect.id = -1;
-    effect.replay.length = 150;
-    if (ioctl(fd_, EVIOCSFF, &effect) < 0) {
-        fprintf(stderr, "haptic: failed to upload effect: %s\n", strerror(errno));
-        ::close(fd_);
-        fd_ = -1;
-        return false;
-    }
-
-    effect_id_ = effect.id;
-    fprintf(stderr, "haptic: using %s (effect id %d)\n", path.c_str(), effect_id_);
-    return true;
-}
-
-void Haptic::shutdown() {
-    if (fd_ < 0) return;
-    stopRumble();
-    if (effect_id_ >= 0) {
-        ioctl(fd_, EVIOCRMFF, effect_id_);
-        effect_id_ = -1;
-    }
-    ::close(fd_);
-    fd_ = -1;
-    target_ = HapticTarget::None;
-}
-
-static void writePlay(int fd, int effect_id, int value) {
+static void writePlay(const InputDevice& dev, int value) {
     input_event ev = {};
     ev.type = EV_FF;
-    ev.code = static_cast<uint16_t>(effect_id);
+    ev.code = static_cast<uint16_t>(dev.effect_id);
     ev.value = value;
-    if (::write(fd, &ev, sizeof(ev)) != sizeof(ev))
-        fprintf(stderr, "haptic: write failed: %s\n", strerror(errno));
+    if (::write(dev.fd, &ev, sizeof(ev)) != sizeof(ev))
+        fprintf(stderr, "haptic: write to %s failed: %s\n", dev.path.c_str(), strerror(errno));
 }
 
-static void sendDeckReport(int fd, const DeckFeatureReport& report) {
-    if (ioctl(fd, HIDIOCSFEATURE(report.size()), report.data()) < 0)
-        fprintf(stderr, "haptic: deck rumble report failed: %s\n", strerror(errno));
-}
-
-void Haptic::setRumble(int duration_ms, uint16_t strength) {
-    if (target_ == HapticTarget::DeckController) {
-        sendDeckReport(fd_, deckRumbleReport(strength, strength / 2));
-        return;
-    }
+static bool uploadEffect(InputDevice& dev, int duration_ms, uint16_t strength) {
     ff_effect effect = {};
     effect.type = FF_RUMBLE;
-    effect.id = static_cast<int16_t>(effect_id_);
+    effect.id = static_cast<int16_t>(dev.effect_id);
     effect.replay.length = static_cast<uint16_t>(duration_ms);
     effect.u.rumble.strong_magnitude = strength;
     effect.u.rumble.weak_magnitude = strength / 2;
-    if (ioctl(fd_, EVIOCSFF, &effect) < 0)
-        fprintf(stderr, "haptic: failed to update effect: %s\n", strerror(errno));
-    writePlay(fd_, effect_id_, 1);
+    if (ioctl(dev.fd, EVIOCSFF, &effect) < 0) {
+        fprintf(stderr, "haptic: failed to upload effect to %s: %s\n", dev.path.c_str(), strerror(errno));
+        return false;
+    }
+    dev.effect_id = effect.id;
+    return true;
 }
 
-void Haptic::stopRumble() {
-    if (target_ == HapticTarget::DeckController)
-        sendDeckReport(fd_, deckRumbleReport(0, 0));
-    else if (effect_id_ >= 0)
-        writePlay(fd_, effect_id_, 0);
+static void sendDeckReport(const InputDevice& dev, const DeckFeatureReport& report) {
+    if (ioctl(dev.fd, HIDIOCSFEATURE(report.size()), report.data()) < 0)
+        fprintf(stderr, "haptic: deck rumble on %s failed: %s\n", dev.path.c_str(), strerror(errno));
 }
 
-void Haptic::pulse(int duration_ms, int strength) {
-    if (fd_ < 0 || target_ == HapticTarget::None) return;
-    setRumble(duration_ms, static_cast<uint16_t>(strength));
-    std::this_thread::sleep_for(std::chrono::milliseconds(duration_ms));
-    stopRumble();
+static void sendTritonReport(const InputDevice& dev, const TritonRumbleReport& report) {
+    if (::write(dev.fd, report.data(), report.size()) != static_cast<ssize_t>(report.size()))
+        fprintf(stderr, "haptic: rumble on %s failed: %s\n", dev.path.c_str(), strerror(errno));
+}
+
+static void sleepMs(int ms) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+}
+
+void hapticPulse(InputDevice& dev, int duration_ms, int strength) {
+    auto s = static_cast<uint16_t>(strength);
+    if (dev.rumble != RumbleKind::None) fprintf(stderr, "haptic: %d ms pulse on %s\n", duration_ms, dev.path.c_str());
+    switch (dev.rumble) {
+    case RumbleKind::None:
+        return;
+    case RumbleKind::Evdev:
+        if (!uploadEffect(dev, duration_ms, s)) return;
+        writePlay(dev, 1);
+        sleepMs(duration_ms);
+        writePlay(dev, 0);
+        return;
+    case RumbleKind::DeckFeature:
+        sendDeckReport(dev, deckRumbleReport(s, s / 2));
+        sleepMs(duration_ms);
+        sendDeckReport(dev, deckRumbleReport(0, 0));
+        return;
+    case RumbleKind::TritonOutput:
+        for (int left = duration_ms; left > 0; left -= kTritonResendMs) {
+            sendTritonReport(dev, tritonRumbleReport(s, s / 2));
+            sleepMs(std::min(left, kTritonResendMs));
+        }
+        sendTritonReport(dev, tritonRumbleReport(0, 0));
+        return;
+    }
+}
+
+void hapticRelease(InputDevice& dev) {
+    if (dev.rumble != RumbleKind::Evdev || dev.effect_id < 0) return;
+    writePlay(dev, 0);
+    ioctl(dev.fd, EVIOCRMFF, dev.effect_id);
+    dev.effect_id = -1;
 }

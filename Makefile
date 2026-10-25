@@ -7,7 +7,7 @@ SHELL_SCRIPTS := $(wildcard *.sh scripts/*.sh appimage/*.sh) appimage/AppRun $(w
 export PATH := $(CURDIR)/.venv/bin:$(PATH)
 
 .PHONY: all test test-cpp test-python lint conventions decky decky-check check check-full tools hooks \
-        deck-test desktop-smoke install uninstall enable clean
+        deck-test desktop-smoke hil-test install uninstall enable clean
 
 all:
 	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(PREFIX) $(CMAKE_ARGS)
@@ -64,6 +64,13 @@ deck-test:
 
 desktop-smoke:
 	scripts/desktop-smoke.sh
+
+# Virtual controllers against a private Whisker instance; needs /dev/uhid and /dev/uinput
+# (SUDO= if you already have access). HIL_ARGS=--no-uhid skips the fake Steam Controller,
+# which a running Steam would pick up.
+SUDO ?= sudo
+hil-test: all
+	$(SUDO) python3 -I scripts/hil-test.py --whisker $(BUILD_DIR)/whisker $(HIL_ARGS)
 
 install: all
 	cmake --install $(BUILD_DIR)

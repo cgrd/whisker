@@ -70,8 +70,8 @@ case "$volume" in
 esac
 
 if [ "$DECK_CHECKS" = 1 ]; then
-    soft "deckpad found the controller" "deckpad did not report the controller (trigger_button unset?)" \
-        grep -q 'deckpad: found Steam Deck controller' <<<"$log"
+    soft "Steam Deck controller streaming" "no reports from the Steam Deck controller" \
+        grep -q 'controller: Steam Deck streaming on' <<<"$log"
     soft "Decky loader active" "Decky plugin_loader not active" systemctl is-active --quiet plugin_loader
 fi
 

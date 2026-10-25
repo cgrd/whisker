@@ -7,7 +7,7 @@ overlay:
       - any-glob-to-any-file: src/overlay*
 deck-input:
   - changed-files:
-      - any-glob-to-any-file: src/deckpad*
+      - any-glob-to-any-file: ["src/controllers*", "src/buttons*", "src/haptic*"]
 docs:
   - changed-files:
       - any-glob-to-any-file: ["docs/**", "*.md"]

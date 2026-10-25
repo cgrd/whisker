@@ -33,6 +33,7 @@ type Diagnostics = {
     memory_mb: number;
 };
 type Option = { data: string; label: string };
+type CaptureResult = { button?: string; device?: string; error?: string };
 type Value = string | number | boolean;
 
 const getStatus = callable<[], Status>("get_status");
@@ -53,6 +54,7 @@ const getLastTranscription = callable<[], string>("get_last_transcription");
 const getModelStatus = callable<[], ModelStatus>("get_model_status");
 const downloadModel = callable<[], boolean>("download_model");
 const cancelDownload = callable<[], void>("cancel_download");
+const captureButton = callable<[], CaptureResult>("capture_button");
 
 const DEFAULTS: Record<string, Value> = {
     model: "",
@@ -98,6 +100,7 @@ const buttonOptions = options([
     ["L5", "L5 (Left Back Lower)"], ["R5", "R5 (Right Back Lower)"], ["select", "Select / Back"],
     ["start", "Start / Menu"], ["guide", "Guide / Steam"], ["L1", "L1"], ["R1", "R1"],
     ["L3", "L3 (Stick Click)"], ["R3", "R3 (Stick Click)"], ["A", "A"], ["B", "B"], ["X", "X"], ["Y", "Y"],
+    ["L1+R1", "L1 + R1"], ["L3+R3", "L3 + R3 (Both Stick Clicks)"],
 ]);
 const backendOptions = options([["vulkan", "Vulkan (GPU)"], ["cpu", "CPU"]]);
 const actionOptions = options([["none", "None"], ["key", "Key"], ["transcribe", "Transcribe"]]);
@@ -136,6 +139,7 @@ function WhiskerPanel() {
     const [models, setModels] = useState<string[]>([]);
     const [audioSources, setAudioSources] = useState<AudioSource[]>([]);
     const [config, setConfig] = useState<Config>({});
+    const [captureText, setCaptureText] = useState("");
     const mountedRef = useRef(true);
     const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
     const restartTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -213,6 +217,18 @@ function WhiskerPanel() {
     const text = (path: string, label: string, description?: string) => row(
         <TextField label={label} description={description} value={get<string>(path)}
             onChange={(e) => update(path, e.target.value, TEXT_DELAY_MS)} />);
+
+    const handleCapture = async () => {
+        setCaptureText("Press and release a button or chord on any controller...");
+        const result = await captureButton();
+        if (result.button) update("trigger_button", result.button);
+        if (!mountedRef.current) return;
+        setCaptureText(result.button ? `Using ${result.button} on ${result.device}` : result.error ?? "");
+    };
+
+    const triggerButton = get<string>("trigger_button");
+    const triggerOptions = buttonOptions.some((o) => o.data === triggerButton)
+        ? buttonOptions : [...buttonOptions, { data: triggerButton, label: triggerButton }];
 
     const pedalSection = ([name, title]: [string, string]) => {
         const p = (key: string) => `pedals.${name}.${key}`;
@@ -362,8 +378,11 @@ function WhiskerPanel() {
                 )}
             </PanelSection>
             <PanelSection title="Trigger">
-                {dropdown("trigger_button", "Controller Button", buttonOptions,
+                {dropdown("trigger_button", "Controller Button", triggerOptions,
                     "Hold to talk. Unmap this button in Steam Input so no game uses it")}
+                {row(<ButtonItem label="Press the Button You Want"
+                    description={captureText || "Works with any connected controller; hold two buttons for a chord"}
+                    onClick={handleCapture} layout="below" />)}
                 {dropdown("trigger_mode", "Mode", modeOptions, "Hold: release to stop. Toggle: press again to stop.")}
             </PanelSection>
             <PanelSection title="Audio">

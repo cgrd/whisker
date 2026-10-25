@@ -8,6 +8,9 @@ history: 50
 # Show waveform + live transcription overlay (requires Wayland compositor with wlr-layer-shell)
 overlay: true
 
+# Controller button that records while held, on any controller: a button like L5 or a chord like L3+R3
+trigger_button: L5
+
 # Key pressed after dictated text is typed: none, enter, tab
 submit_key: none
 

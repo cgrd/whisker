@@ -15,7 +15,7 @@ The playbook for @cgrd. Most of the lifecycle is automated; this lists what runs
 ## What you still do by hand
 
 * Read, review and approve PRs; approve CI runs for outside contributors
-* Run `make deck-test` before merging PRs that touch `src/deckpad*`, `src/overlay*`, `decky/`, the service unit or the AppImage, and before releasing
+* Run `make deck-test` before merging PRs that touch `src/controllers*`, `src/buttons*`, `src/haptic*`, `src/overlay*`, `decky/`, the service unit or the AppImage, and before releasing
 * Merge the release PR when you're ready to ship, then approve the `release` environment deployment
 * Triage new issues
 * Merge or close dependency PRs once CI is green
@@ -55,7 +55,7 @@ Treat every fork PR as untrusted until you've read all of it.
 ## Review checklist
 
 * Correct and minimal; does what the title says
-* Input handling is safe: hidraw report lengths and IDs, evdev events, uinput output (no stuck keys, `releaseAll` on exit), the command socket (only `start`/`stop`, bounded buffer), config values, `exec_press`/`exec_release`
+* Input handling is safe: hidraw report lengths and IDs, evdev events, uinput output (no stuck keys, `releaseAll` on exit), the command socket (only `start`/`stop`/`capture`, bounded buffer), config values, `exec_press`/`exec_release`
 * No new dynamic dependencies. Third-party libraries are linked statically; only system-dependent libraries (glibc, Vulkan, PipeWire, libsystemd, X11/Wayland client libraries) stay dynamic.
 * Works on desktop Linux and the Deck, with capability detection rather than distro or device checks
 * Tests for new pure logic; `make test` passes

@@ -2,12 +2,10 @@
 #include "config.h"
 #include "pedal.h"
 #include "hotkey.h"
-#include "gamepad.h"
-#include "deckpad.h"
+#include "controllers.h"
 #include "keyboard.h"
 #include "audio.h"
 #include "audiocue.h"
-#include "haptic.h"
 #include "dictation.h"
 #include "stt.h"
 #include "overlay.h"
@@ -29,9 +27,16 @@
 #include <sys/stat.h>
 
 static volatile sig_atomic_t g_running = 1;
+static constexpr int kCaptureTimeoutMs = 10000;
 
 static void signalHandler(int) {
     g_running = 0;
+}
+
+static bool usesPedal(const Config& cfg) {
+    for (auto& p : cfg.pedals)
+        if (p.action != PedalAction::None) return true;
+    return false;
 }
 
 static bool needsTranscribe(const Config& cfg) {
@@ -62,27 +67,25 @@ static int last_typed_len = 0;
 static void doTranscribe(const PedalConfig& pcfg, AudioCapture& audio, SpeechToText& stt,
                          VirtualKeyboard& keyboard, Overlay& overlay, History& history,
                          Tray& tray, const Config& cfg, bool has_overlay,
-                         Pedal* pedal, Hotkey* hotkey, Gamepad* gamepad,
-                         AudioCue* cue, Haptic* haptic,
-                         CommandSocket* cmdsock, Deckpad* deckpad,
-                         PedalButton release_button) {
+                         Pedal* pedal, Hotkey* hotkey, Controllers* controllers,
+                         AudioCue* cue, bool haptic, const std::string& trigger_device,
+                         CommandSocket* cmdsock, PedalButton release_button) {
     fprintf(stderr, "whisker: recording...\n");
     audio.startCapture();
     if (has_overlay) overlay.show();
     if (cfg.tray) tray.setRecording(true);
     if (cue) cue->play(true);
-    if (haptic) haptic->pulse(150, 0xC000);
+    if (haptic) controllers->pulse(trigger_device, 150, 0xC000);
 
     bool toggle = (cfg.trigger_mode == "toggle");
 
-    struct pollfd fds[5];
+    struct pollfd fds[4];
     int nfds = 0;
-    int pedal_idx = -1, hotkey_idx = -1, gamepad_idx = -1, cmd_idx = -1, deck_idx = -1;
+    int pedal_idx = -1, hotkey_idx = -1, controller_idx = -1, cmd_idx = -1;
     if (pedal && pedal->isOpen()) { pedal_idx = nfds; fds[nfds++] = {pedal->fd(), POLLIN, 0}; }
     if (hotkey && hotkey->fd() >= 0) { hotkey_idx = nfds; fds[nfds++] = {hotkey->fd(), POLLIN, 0}; }
-    if (gamepad && gamepad->fd() >= 0) { gamepad_idx = nfds; fds[nfds++] = {gamepad->fd(), POLLIN, 0}; }
+    if (controllers && controllers->fd() >= 0) { controller_idx = nfds; fds[nfds++] = {controllers->fd(), POLLIN, 0}; }
     if (cmdsock && cmdsock->fd() >= 0) { cmd_idx = nfds; fds[nfds++] = {cmdsock->fd(), POLLIN, 0}; }
-    if (deckpad && deckpad->fd() >= 0) { deck_idx = nfds; fds[nfds++] = {deckpad->fd(), POLLIN, 0}; }
 
     auto rec_start = std::chrono::steady_clock::now();
     int timeout_ms = cfg.recording_timeout > 0 ? cfg.recording_timeout * 1000 : 0;
@@ -110,17 +113,14 @@ static void doTranscribe(const PedalConfig& pcfg, AudioCapture& audio, SpeechToT
                 int hk = hotkey->readEvent();
                 if (toggle ? (hk == 1) : (hk == -1)) released = true;
             }
-            if (gamepad_idx >= 0 && (fds[gamepad_idx].revents & POLLIN)) {
-                int gp = gamepad->readEvent();
-                if (toggle ? (gp == 1) : (gp == -1)) released = true;
+            if (controller_idx >= 0 && (fds[controller_idx].revents & POLLIN)) {
+                int cp = controllers->readEvent();
+                if (toggle ? (cp == 1) : (cp == -1)) released = true;
             }
             if (cmd_idx >= 0 && (fds[cmd_idx].revents & POLLIN)) {
-                int cc = cmdsock->readCommand();
-                if (cc == -1) released = true;
-            }
-            if (deck_idx >= 0 && (fds[deck_idx].revents & POLLIN)) {
-                int dp = deckpad->readEvent();
-                if (toggle ? (dp == 1) : (dp == -1)) released = true;
+                Command cc = cmdsock->readCommand();
+                if (cc == Command::Stop) released = true;
+                if (cc == Command::Capture) cmdsock->reply("busy");
             }
         }
         if (cfg.tray) tray.poll();
@@ -134,9 +134,9 @@ static void doTranscribe(const PedalConfig& pcfg, AudioCapture& audio, SpeechToT
     auto samples = audio.stopCapture();
     if (cue) cue->play(false);
     if (haptic) {
-        haptic->pulse(80, 0x8000);
+        controllers->pulse(trigger_device, 80, 0x8000);
         std::this_thread::sleep_for(std::chrono::milliseconds(80));
-        haptic->pulse(80, 0x8000);
+        controllers->pulse(trigger_device, 80, 0x8000);
     }
     if (samples.empty()) {
         if (cfg.tray) tray.setRecording(false);
@@ -218,6 +218,11 @@ static int checkConfig(const std::string& path) {
            path.c_str(), cfg.model_path.c_str(), cfg.backend.c_str(), cfg.trigger_key.c_str(),
            cfg.trigger_button.c_str(), cfg.submit_key.c_str());
     bool ok = comboValid("trigger_key", cfg.trigger_key);
+    ButtonSet chord;
+    if (!cfg.trigger_button.empty() && !parseButtonChord(cfg.trigger_button, chord)) {
+        fprintf(stderr, "whisker: trigger_button: unknown button or chord \"%s\"\n", cfg.trigger_button.c_str());
+        ok = false;
+    }
     const char* names[] = {"pedals.left.key", "pedals.center.key", "pedals.right.key"};
     for (int i = 0; i < 3; ++i)
         if (cfg.pedals[i].action == PedalAction::Key)
@@ -332,12 +337,9 @@ int main(int argc, char* argv[]) {
 
     Pedal pedal;
     Hotkey hotkey;
-    Gamepad gamepad;
-    Deckpad deckpad;
+    Controllers controllers;
     bool has_pedal = false;
     bool has_hotkey = false;
-    bool has_gamepad = false;
-    bool has_deckpad = false;
 
     if (!cfg.trigger_key.empty()) {
         has_hotkey = hotkey.init(cfg.trigger_key);
@@ -345,25 +347,16 @@ int main(int argc, char* argv[]) {
             fprintf(stderr, "whisker: failed to init hotkey\n");
     }
 
-    if (Deckpad::handlesButton(cfg.trigger_button))
-        has_deckpad = deckpad.init(cfg.trigger_button);
+    // Controllers stay open without a trigger button so the button capture works.
+    bool has_controllers = controllers.init(cfg.trigger_button);
+    if (!has_controllers)
+        fprintf(stderr, "whisker: controller trigger unavailable\n");
+    bool has_button = has_controllers && controllers.hasTrigger();
+    bool has_haptic = has_controllers && cfg.haptic;
 
-    if (!cfg.trigger_button.empty() && !has_deckpad) {
-        has_gamepad = gamepad.init(cfg.trigger_button);
-        if (!has_gamepad)
-            fprintf(stderr, "whisker: failed to init gamepad trigger\n");
-    }
-
-    Haptic haptic;
-    bool has_haptic = cfg.haptic;
-    if (has_haptic) {
-        if (!haptic.init(has_gamepad ? gamepad.path() : "")) {
-            fprintf(stderr, "whisker: haptic unavailable, continuing without\n");
-            has_haptic = false;
-        }
-    }
-
-    if (has_hotkey || has_gamepad || has_deckpad) {
+    if (!usesPedal(cfg)) {
+        has_pedal = false;
+    } else if (has_hotkey || has_button) {
         has_pedal = pedal.open();
         if (!has_pedal)
             fprintf(stderr, "whisker: no pedal found, using other triggers\n");
@@ -378,7 +371,7 @@ int main(int argc, char* argv[]) {
         has_pedal = g_running;
     }
 
-    if (!has_pedal && !has_hotkey && !has_gamepad && !has_deckpad && !has_cmdsock) {
+    if (!has_pedal && !has_hotkey && !has_button && !has_cmdsock) {
         fprintf(stderr, "whisker: no input method available\n");
         return 1;
     }
@@ -394,6 +387,18 @@ int main(int argc, char* argv[]) {
 
     auto& hotkey_pcfg = cfg.pedals[1];
 
+    auto transcribe = [&](const PedalConfig& pcfg, PedalButton release_button, const std::string& trigger_device) {
+        if (!has_transcribe) return;
+        doTranscribe(pcfg, audio, stt, keyboard, overlay, history, tray, cfg, has_overlay,
+                     has_pedal ? &pedal : nullptr,
+                     has_hotkey ? &hotkey : nullptr,
+                     has_controllers ? &controllers : nullptr,
+                     has_cue ? &audiocue : nullptr,
+                     has_haptic, trigger_device,
+                     has_cmdsock ? &cmdsock : nullptr,
+                     release_button);
+    };
+
     while (g_running) {
         if (cfg.tray) {
             tray.poll();
@@ -403,10 +408,9 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        struct pollfd fds[5];
+        struct pollfd fds[4];
         int nfds = 0;
-        int pedal_poll_idx = -1, hotkey_poll_idx = -1, gamepad_poll_idx = -1, cmd_poll_idx = -1;
-        int deck_poll_idx = -1;
+        int pedal_poll_idx = -1, hotkey_poll_idx = -1, controller_poll_idx = -1, cmd_poll_idx = -1;
 
         if (has_pedal && pedal.isOpen()) {
             pedal_poll_idx = nfds;
@@ -416,17 +420,13 @@ int main(int argc, char* argv[]) {
             hotkey_poll_idx = nfds;
             fds[nfds++] = {hotkey.fd(), POLLIN, 0};
         }
-        if (has_gamepad) {
-            gamepad_poll_idx = nfds;
-            fds[nfds++] = {gamepad.fd(), POLLIN, 0};
+        if (has_controllers) {
+            controller_poll_idx = nfds;
+            fds[nfds++] = {controllers.fd(), POLLIN, 0};
         }
         if (has_cmdsock) {
             cmd_poll_idx = nfds;
             fds[nfds++] = {cmdsock.fd(), POLLIN, 0};
-        }
-        if (has_deckpad) {
-            deck_poll_idx = nfds;
-            fds[nfds++] = {deckpad.fd(), POLLIN, 0};
         }
 
         if (nfds == 0) {
@@ -479,17 +479,8 @@ int main(int argc, char* argv[]) {
                         break;
 
                     case PedalAction::Transcribe:
-                        if (event.pressed && has_transcribe) {
-                            doTranscribe(pcfg, audio, stt, keyboard, overlay, history,
-                                         tray, cfg, has_overlay,
-                                         &pedal, has_hotkey ? &hotkey : nullptr,
-                                         has_gamepad ? &gamepad : nullptr,
-                                         has_cue ? &audiocue : nullptr,
-                                         has_haptic ? &haptic : nullptr,
-                                         has_cmdsock ? &cmdsock : nullptr,
-                                         has_deckpad ? &deckpad : nullptr,
-                                         event.button);
-                        }
+                        if (event.pressed)
+                            transcribe(pcfg, event.button, "");
                         break;
 
                     case PedalAction::Exec:
@@ -507,76 +498,29 @@ int main(int argc, char* argv[]) {
         }
 
         if (hotkey_poll_idx >= 0 && (fds[hotkey_poll_idx].revents & POLLIN)) {
-            int hk = hotkey.readEvent();
-            if (hk == 1 && has_transcribe) {
-                doTranscribe(hotkey_pcfg, audio, stt, keyboard, overlay, history,
-                             tray, cfg, has_overlay,
-                             has_pedal ? &pedal : nullptr, &hotkey,
-                             has_gamepad ? &gamepad : nullptr,
-                             has_cue ? &audiocue : nullptr,
-                             has_haptic ? &haptic : nullptr,
-                             has_cmdsock ? &cmdsock : nullptr,
-                             has_deckpad ? &deckpad : nullptr,
-                             PedalButton::Center);
-            }
+            if (hotkey.readEvent() == 1)
+                transcribe(hotkey_pcfg, PedalButton::Center, "");
         }
 
-        if (gamepad_poll_idx >= 0 && (fds[gamepad_poll_idx].revents & POLLIN)) {
-            int gp = gamepad.readEvent();
-            if (gp == 1 && has_transcribe) {
-                doTranscribe(hotkey_pcfg, audio, stt, keyboard, overlay, history,
-                             tray, cfg, has_overlay,
-                             has_pedal ? &pedal : nullptr,
-                             has_hotkey ? &hotkey : nullptr,
-                             &gamepad,
-                             has_cue ? &audiocue : nullptr,
-                             has_haptic ? &haptic : nullptr,
-                             has_cmdsock ? &cmdsock : nullptr,
-                             has_deckpad ? &deckpad : nullptr,
-                             PedalButton::Center);
-            }
+        if (controller_poll_idx >= 0 && (fds[controller_poll_idx].revents & POLLIN)) {
+            if (controllers.readEvent() == 1)
+                transcribe(hotkey_pcfg, PedalButton::Center, controllers.lastTrigger());
         }
 
         if (cmd_poll_idx >= 0 && (fds[cmd_poll_idx].revents & POLLIN)) {
-            int cc = cmdsock.readCommand();
-            if (cc == 1 && has_transcribe) {
-                doTranscribe(hotkey_pcfg, audio, stt, keyboard, overlay, history,
-                             tray, cfg, has_overlay,
-                             has_pedal ? &pedal : nullptr,
-                             has_hotkey ? &hotkey : nullptr,
-                             has_gamepad ? &gamepad : nullptr,
-                             has_cue ? &audiocue : nullptr,
-                             has_haptic ? &haptic : nullptr,
-                             &cmdsock,
-                             has_deckpad ? &deckpad : nullptr,
-                             PedalButton::Center);
-            }
-        }
-
-        if (deck_poll_idx >= 0 && (fds[deck_poll_idx].revents & POLLIN)) {
-            int dp = deckpad.readEvent();
-            if (dp == 1 && has_transcribe) {
-                doTranscribe(hotkey_pcfg, audio, stt, keyboard, overlay, history,
-                             tray, cfg, has_overlay,
-                             has_pedal ? &pedal : nullptr,
-                             has_hotkey ? &hotkey : nullptr,
-                             has_gamepad ? &gamepad : nullptr,
-                             has_cue ? &audiocue : nullptr,
-                             has_haptic ? &haptic : nullptr,
-                             has_cmdsock ? &cmdsock : nullptr,
-                             &deckpad,
-                             PedalButton::Center);
-            }
+            Command cc = cmdsock.readCommand();
+            if (cc == Command::Start)
+                transcribe(hotkey_pcfg, PedalButton::Center, "");
+            if (cc == Command::Capture)
+                cmdsock.reply(has_controllers ? controllers.capture(kCaptureTimeoutMs, g_running) : "");
         }
     }
 
     keyboard.releaseAll();
     hotkey.close();
-    gamepad.close();
-    deckpad.close();
+    controllers.close();
     if (has_cmdsock) cmdsock.close();
     if (has_cue) audiocue.shutdown();
-    if (has_haptic) haptic.shutdown();
     if (cfg.tray) tray.shutdown();
     if (has_overlay) overlay.shutdown();
     fprintf(stderr, "whisker: shutting down\n");

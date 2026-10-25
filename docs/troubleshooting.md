@@ -7,11 +7,13 @@ journalctl --user -u whisker -b --no-pager | tail -50
 ~/Applications/Whisker-x86_64.AppImage --check-config
 ```
 
-## Nothing happens when I hold the Deck back button
+## Nothing happens when I press the controller button
 
-* Check the journal for `deckpad: found Steam Deck controller at /dev/hidrawN` and `deckpad: listening for L5`. If they're missing, `trigger_button` is empty or set to a button Whisker can't read from hidraw (only L4, L5, R4 and R5 work).
-* The game's Steam Input layout may bind the same button. Whisker still sees the press, but the game reacts too, and some apps grab it outright (Chiaki bound L5 to "end session" by default). Unbind the button in that game's controller settings or pick another back button.
-* In Game Mode Steam owns the controller, so evdev triggers (`trigger_key`, gamepad buttons) don't fire. Use a back button or the Decky Record button.
+* Check the journal for `controller: listening for L5` and a `controller: ... streaming on /dev/hidrawN` or `controller: opened ... at /dev/input/eventN` line for your controller. `invalid trigger_button` means the name or chord is wrong; `--check-config` says so too. Use the Decky plugin's "Press the Button You Want" to pick one.
+* A wireless Steam Controller shows up as five puck nodes; only the slot your controller is paired to logs `streaming`. If none does, turn the controller on and press a button.
+* `cannot open /dev/hidrawN` on a desktop means the Steam udev rules aren't installed. Install your distro's `steam-devices` package (or start Steam once), then replug the controller.
+* The game's Steam Input layout may bind the same button. Whisker still sees the press, but the game reacts too, and some apps grab it outright (Chiaki bound L5 to "end session" by default). Unbind the button in that game's controller settings or pick another button or a chord like `L3+R3`.
+* Xbox, PlayStation and other controllers are read through evdev, which needs read access to `/dev/input/eventN`. Most desktops grant it to the logged-in user for gamepads.
 
 ## It records but types nothing
 
@@ -26,7 +28,7 @@ journalctl --user -u whisker -b --no-pager | tail -50
 
 ## No vibration, or the wrong controller vibrates
 
-Whisker rumbles the gamepad you set as the trigger, if it supports rumble, otherwise the Steam Deck's built-in controller, otherwise nothing. It never uses virtual pads such as Steam Input's, which forward rumble to whichever controller Steam picks. The journal shows `haptic: using ...` or `haptic: no physical rumble device for the trigger` on startup.
+Whisker rumbles the controller you pressed the trigger on, if it supports rumble, otherwise the Steam Deck's built-in controller, otherwise nothing. Recordings started from the keyboard, a pedal or Decky rumble the Deck. It never uses virtual pads such as Steam Input's, which forward rumble to whichever controller Steam picks. The journal marks controllers that can rumble with `(rumble)` in the `controller: opened` line; the 2015 Steam Controller has no rumble support yet.
 
 ## Foot pedal not detected
 
