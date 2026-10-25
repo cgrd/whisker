@@ -1,6 +1,6 @@
 # Contributing to Whisker
 
-Thanks for helping. This covers how to get a change merged.
+Thanks for helping. This page covers how to get a change merged.
 
 ## Workflow
 
