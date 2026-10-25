@@ -1,0 +1,11 @@
+{
+  "name": "Whisker",
+  "author": "The Whisker authors",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["speech-to-text", "accessibility", "input"],
+    "description": "Local speech-to-text with configurable triggers. Hold a button, speak, release, and your words are typed.",
+    "image": ""
+  }
+}

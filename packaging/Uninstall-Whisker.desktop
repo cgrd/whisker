@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Uninstall Whisker
+Comment=Remove Whisker (keeps your settings and models)
+Exec=bash -c "curl -fsSL https://github.com/cgrd/whisker/releases/latest/download/install.sh | bash -s -- --uninstall; echo; read -rp 'Press Enter to close'"
+Icon=edit-delete
+Terminal=true

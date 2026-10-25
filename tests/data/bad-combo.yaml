@@ -1,0 +1,5 @@
+trigger_key: ctrl+bogus+x
+pedals:
+  left:
+    action: key
+    key: "ctrl+shift+alt+F1"

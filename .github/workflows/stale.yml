@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: MIT
+name: Stale
+
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  stale:
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          only-labels: needs-info
+          stale-issue-label: no-response
+          stale-pr-label: no-response
+          days-before-stale: 30
+          days-before-close: 14
+          exempt-issue-labels: security,pinned
+          exempt-pr-labels: security,pinned
+          stale-issue-message: "No reply for 30 days. This closes in 14 days unless there's an update."
+          stale-pr-message: "No reply for 30 days. This closes in 14 days unless there's an update."
+          close-issue-message: "Closing for now. Comment with the requested info and we'll reopen."
+          close-pr-message: "Closing for now. Feel free to reopen when you pick it back up."
+
+  conflicts:
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          only-pr-labels: needs rebase
+          days-before-issue-stale: -1
+          days-before-issue-close: -1
+          days-before-pr-stale: 7
+          days-before-pr-close: -1
+          stale-pr-label: stale
+          stale-pr-message: "This PR has conflicted with main for 7 days without activity. Rebase it on current main so it can be reviewed. It won't be closed automatically."
+          remove-pr-stale-when-updated: true
+          exempt-draft-pr: true

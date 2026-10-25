@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: MIT
+name: PR housekeeping
+
+# Scheduled instead of pull_request_target, so no PR event ever runs with a write token
+on:
+  schedule:
+    - cron: "35 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pr-housekeeping
+  cancel-in-progress: true
+
+jobs:
+  housekeeping:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    outputs:
+      numbers: ${{ steps.open.outputs.numbers }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Close PRs over the open PR limit
+        # 1 open PR for authors with nothing merged yet, 5 after their first merge, no limit for collaborators
+        run: |
+          gh pr list --state open -L 200 --json number,author,authorAssociation \
+            --jq '.[] | select(.authorAssociation != "OWNER" and .authorAssociation != "MEMBER" and .authorAssociation != "COLLABORATOR") | "\(.number) \(.author.login)"' |
+            sort -n | while read -r number author; do
+              merged=$(gh pr list --state merged --author "$author" -L 1 --json number --jq length)
+              limit=$([ "$merged" -gt 0 ] && echo 5 || echo 1)
+              open=$(gh pr list --state open --author "$author" -L 100 --json number --jq "map(select(.number < $number)) | length")
+              if [ "$open" -ge "$limit" ]; then
+                gh pr close "$number" --comment "Closing because you already have $open open pull request(s); the limit is $limit until more of yours are merged. Reopen this once one of them is merged or closed. See CONTRIBUTING.md."
+                gh pr edit "$number" --add-label "open PR limit"
+              fi
+            done
+      - name: Label PRs that conflict with main
+        run: |
+          gh pr list --state open -L 200 --json number,mergeable,labels \
+            --jq '.[] | "\(.number) \(.mergeable) \([.labels[].name] | index("needs rebase") != null)"' |
+            while read -r number mergeable labeled; do
+              if [ "$mergeable" = CONFLICTING ] && [ "$labeled" = false ]; then
+                gh pr edit "$number" --add-label "needs rebase"
+              elif [ "$mergeable" = MERGEABLE ] && [ "$labeled" = true ]; then
+                gh pr edit "$number" --remove-label "needs rebase"
+              fi
+            done
+      - id: open
+        run: |
+          numbers=$(gh pr list --state open -L 100 --json number --jq '.[].number')
+          {
+            echo 'numbers<<EOF'
+            echo "$numbers"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+      - name: Path labels
+        if: steps.open.outputs.numbers != ''
+        uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
+        with:
+          pr-number: ${{ steps.open.outputs.numbers }}

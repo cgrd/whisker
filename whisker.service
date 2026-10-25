@@ -1,0 +1,15 @@
+[Unit]
+Description=Whisker speech-to-text daemon
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/whisker
+Restart=on-failure
+RestartSec=3
+# Signal only whisker; killing the AppImage FUSE helper at the same time unmaps the binary mid-shutdown (SIGBUS)
+KillMode=mixed
+PassEnvironment=WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
+
+[Install]
+WantedBy=default.target

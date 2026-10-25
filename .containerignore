@@ -1,0 +1,10 @@
+build/
+Whisker.AppDir/
+Whisker-x86_64.AppImage
+*.tar.gz
+*.zip
+appimage/appimagetool-*
+.git/
+third-party-licenses
+dist
+.venv

@@ -1,0 +1,30 @@
+#!/bin/bash
+# SPDX-License-Identifier: MIT
+APPDIR="$(dirname "$(readlink -f "$0")")"
+export APPDIR
+
+export LD_LIBRARY_PATH="${APPDIR}/usr/lib:${LD_LIBRARY_PATH}"
+
+if [ "$1" = "--install-service" ] || [ "$1" = "-I" ]; then
+    source "${APPDIR}/install-service.sh"
+    exit 0
+fi
+
+case "$1" in
+    --version|-V|--help|-h|--check-config)
+        exec "${APPDIR}/usr/bin/whisker" "$@"
+        ;;
+esac
+
+SETUP_MARKER="$HOME/.config/pedal-stt/.setup-done"
+
+if [ ! -f "$SETUP_MARKER" ] && [ -z "$WHISKER_SERVICE" ]; then
+    source "${APPDIR}/install-service.sh"
+    mkdir -p "$HOME/.config/pedal-stt"
+    touch "$SETUP_MARKER"
+    systemctl --user start whisker
+    sleep 1
+    exec "${APPDIR}/usr/bin/whisker" --settings
+fi
+
+exec "${APPDIR}/usr/bin/whisker" "$@"

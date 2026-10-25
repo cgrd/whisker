@@ -1,0 +1,10 @@
+# Code owner review is required for every path. The explicit entries mark the
+# build, release and install paths that need the closest look.
+*                    @cgrd
+/.github/            @cgrd
+/scripts/            @cgrd
+/appimage/           @cgrd
+/Containerfile       @cgrd
+/build-container.sh  @cgrd
+/CMakeLists.txt      @cgrd
+/decky/              @cgrd

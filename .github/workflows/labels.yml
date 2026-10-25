@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: MIT
+name: Labels
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/labels.yml"]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - run: |
+          label() { gh label create "$1" --color "$2" --description "$3" --force; }
+          label bug               d73a4a "Something is broken"
+          label enhancement       a2eeef "New feature or request"
+          label "good first issue" 7057ff "Small and well scoped"
+          label needs-info        fbca04 "Waiting on the reporter; goes stale after 30 days"
+          label wontfix           ffffff "Out of scope"
+          label security          b60205 "Security related; never auto-closed"
+          label pinned            0e8a16 "Never auto-closed"
+          label dependencies      0366d6 "Dependency update"
+          label scheduled-build   b60205 "Scheduled upstream build failed"
+          label "needs rebase"    b60205 "Conflicts with main"
+          label no-response       ededed "needs-info without a reply for 30 days"
+          label stale             ededed "Conflicting with main and no activity for 7 days"
+          label "open PR limit"   d93f0b "Closed over the open PR limit"
+          label decky             1d76db "decky/"
+          label overlay           1d76db "src/overlay*"
+          label deck-input        1d76db "src/deckpad*"
+          label docs              0075ca "Documentation"
+          label ci                5319e7 ".github/"
+          label tests             c5def5 "tests/"

@@ -1,0 +1,13 @@
+[Unit]
+Description=Pedal-controlled speech-to-text
+After=pipewire.service
+
+[Service]
+ExecStart=%h/.local/bin/pedal-stt
+Restart=on-failure
+RestartSec=3
+# Overlay needs Wayland access; import from session
+PassEnvironment=WAYLAND_DISPLAY XDG_RUNTIME_DIR
+
+[Install]
+WantedBy=default.target

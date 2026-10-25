@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Whisker
+Comment=Speech-to-text with foot pedal control
+Exec=whisker
+Icon=whisker
+Terminal=false
+Categories=AudioVideo;Audio;Utility;

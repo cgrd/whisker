@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Install Whisker
+Comment=Download and install the latest Whisker release
+Exec=bash -c "curl -fsSL https://github.com/cgrd/whisker/releases/latest/download/install.sh | bash; echo; read -rp 'Press Enter to close'"
+Icon=system-software-install
+Terminal=true

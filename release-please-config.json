@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "whisker",
+      "include-component-in-tag": false,
+      "initial-version": "1.0.0",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        "CMakeLists.txt",
+        {"type": "json", "path": "decky/package.json", "jsonpath": "$.version"}
+      ]
+    }
+  }
+}

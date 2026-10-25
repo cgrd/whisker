@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: MIT
+decky:
+  - changed-files:
+      - any-glob-to-any-file: decky/**
+overlay:
+  - changed-files:
+      - any-glob-to-any-file: src/overlay*
+deck-input:
+  - changed-files:
+      - any-glob-to-any-file: src/deckpad*
+docs:
+  - changed-files:
+      - any-glob-to-any-file: ["docs/**", "*.md"]
+ci:
+  - changed-files:
+      - any-glob-to-any-file: .github/**
+tests:
+  - changed-files:
+      - any-glob-to-any-file: ["tests/**", "decky/tests/**"]

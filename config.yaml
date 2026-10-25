@@ -1,0 +1,26 @@
+model: ~/.local/share/pedal-stt/models/parakeet-unified-en-0.6b-Q8_0.gguf
+backend: vulkan
+
+# Save last N recordings as FLAC + text in ~/.local/share/pedal-stt/history/
+# Set to 0 to disable
+history: 50
+
+# Show waveform + live transcription overlay (requires Wayland compositor with wlr-layer-shell)
+overlay: true
+
+# Key pressed after dictated text is typed: none, enter, tab
+submit_key: none
+
+pedals:
+  left:
+    action: key
+    key: "ctrl+shift+alt+F1"
+    mode: hold
+  center:
+    action: transcribe
+    # Output mode: "type" (virtual keyboard), "clipboard" (wl-copy), "both"
+    output: type
+  right:
+    action: key
+    key: "ctrl+shift+alt+F3"
+    mode: hold

@@ -1,0 +1,9 @@
+#!/bin/bash
+# SPDX-License-Identifier: MIT
+# Installed by `make hooks`. Every commit needs a DCO sign-off.
+set -euo pipefail
+
+if ! grep -q '^Signed-off-by: ' "$1"; then
+    echo "commit-msg: missing Signed-off-by line. Commit with 'git commit -s' (DCO, see CONTRIBUTING.md)." >&2
+    exit 1
+fi

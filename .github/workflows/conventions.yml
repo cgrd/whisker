@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: MIT
+name: Conventions
+
+# Runs the checker from the base branch against the PR's git objects, so a PR
+# can't weaken the rules it's checked against. PR code is never checked out or run.
+on:
+  pull_request_target: # zizmor: ignore[dangerous-triggers] base checkout only, see above
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conventions-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  conventions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch the PR's objects without checking them out
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git fetch --no-tags origin "$HEAD_SHA"
+      - name: Check conventions with the trusted base script
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/body.md"
+          python3 -I scripts/check_conventions.py --base "$BASE_SHA" --head "$HEAD_SHA" \
+            --pr-title "$PR_TITLE" --pr-body-file "$RUNNER_TEMP/body.md"
+      - name: Summarize changes that need extra review
+        if: always()
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: scripts/review-flags.sh "$BASE_SHA" "$HEAD_SHA"

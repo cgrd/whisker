@@ -1,0 +1,15 @@
+build/
+.cache/
+imgui.ini
+*.AppDir/
+*.AppImage
+appimage/appimagetool-*
+third-party-licenses/
+*.tar.gz
+*.zip
+__pycache__/
+.pytest_cache/
+decky/node_modules/
+/dist/
+.venv
+decky/dist/*.map

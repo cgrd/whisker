@@ -1,0 +1,24 @@
+#!/bin/bash
+# SPDX-License-Identifier: MIT
+# Installed by `make hooks`. Quick checks on staged changes; `make check` runs everything.
+set -euo pipefail
+
+PATH="$(git rev-parse --show-toplevel)/.venv/bin:$PATH"
+
+need() {
+    command -v "$1" >/dev/null || { echo "pre-commit: '$1' not found; run 'make tools'" >&2; exit 1; }
+}
+
+python3 -I scripts/check_conventions.py --staged
+
+mapfile -t scripts < <(git diff --cached --name-only --diff-filter=ACM -- '*.sh' appimage/AppRun '.githooks/*')
+if [ ${#scripts[@]} -gt 0 ]; then
+    need shellcheck
+    shellcheck -S warning "${scripts[@]}"
+fi
+
+mapfile -t python < <(git diff --cached --name-only --diff-filter=ACM -- '*.py')
+if [ ${#python[@]} -gt 0 ]; then
+    need ruff
+    ruff check "${python[@]}"
+fi

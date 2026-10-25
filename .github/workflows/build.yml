@@ -1,0 +1,69 @@
+# SPDX-License-Identifier: MIT
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      arch_mirror:
+        description: Arch mirror URL; empty keeps the pinned snapshot from the Containerfile
+        type: string
+        default: ""
+      cmake_args:
+        description: Extra CMake arguments
+        type: string
+        default: ""
+      use_cache:
+        type: boolean
+        default: true
+    outputs:
+      artifact:
+        description: Name of the uploaded artifact holding the release assets
+        value: ${{ jobs.build.outputs.artifact }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    outputs:
+      artifact: ${{ steps.name.outputs.artifact }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Builds the AppImage and runs ctest inside the container
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Containerfile
+          load: true
+          tags: whisker-build
+          build-args: |
+            ${{ inputs.arch_mirror != '' && format('ARCH_MIRROR={0}', inputs.arch_mirror) || '' }}
+            ${{ inputs.arch_mirror != '' && 'ARCH_KEYRING_URL=' || '' }}
+            ${{ inputs.cmake_args != '' && format('CMAKE_ARGS={0}', inputs.cmake_args) || '' }}
+          cache-from: ${{ inputs.use_cache && 'type=gha' || '' }}
+          cache-to: ${{ inputs.use_cache && 'type=gha,mode=max' || '' }}
+
+      - name: Package release assets
+        run: |
+          mkdir -p dist
+          docker run --rm -v "$PWD/dist:/output" whisker-build
+          sudo chown -R "$(id -u):$(id -g)" dist
+          scripts/package-release.sh dist
+
+      - id: name
+        run: echo "artifact=whisker-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.name.outputs.artifact }}
+          path: |
+            dist/*
+            !dist/Whisker-x86_64.AppImage
+          if-no-files-found: error
+          retention-days: 14

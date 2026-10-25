@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: MIT
+name: Scheduled build
+
+# Builds main against live Arch packages and transcribe.cpp main to catch upstream breakage
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  build:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build.yml
+    with:
+      arch_mirror: https://geo.mirror.pkgbuild.com/$repo/os/$arch
+      cmake_args: -DTRANSCRIBE_CPP_TAG=main
+      use_cache: false
+
+  report:
+    needs: build
+    if: failure()
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          existing=$(gh issue list --label scheduled-build --state open --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Still failing: $RUN_URL"
+          else
+            gh label create scheduled-build --color B60205 --description "Scheduled upstream build failed" 2>/dev/null || true
+            gh issue create --label scheduled-build --title "Scheduled build against latest upstream failed" \
+              --body "The weekly build against live Arch packages and transcribe.cpp main failed: $RUN_URL"
+          fi

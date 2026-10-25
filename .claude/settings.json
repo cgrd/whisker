@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(make:*)",
+      "Bash(cmake:*)",
+      "Bash(ctest:*)",
+      "Bash(python3 -m pytest:*)",
+      "Bash(python3 -I scripts/check_conventions.py:*)",
+      "Bash(scripts/check_conventions.py:*)",
+      "Bash(shellcheck:*)",
+      "Bash(ruff check:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(./build/whisker --version)",
+      "Bash(./build/whisker --check-config:*)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(make deck-test:*)",
+      "Bash(scripts/deck-test.sh:*)",
+      "Bash(make desktop-smoke:*)",
+      "Edit(./.github/workflows/**)",
+      "Edit(./scripts/install.sh)",
+      "Edit(./Containerfile)"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git commit --no-verify:*)",
+      "Bash(git commit -n:*)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Edit(./LICENSES/**)",
+      "Edit(./build/**)",
+      "Edit(./dist/**)",
+      "Edit(./CHANGELOG.md)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write|NotebookEdit",
+        "hooks": [{"type": "command", "command": "python3 -I \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard.py\" pre-edit"}]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [{"type": "command", "command": "python3 -I \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard.py\" pre-bash"}]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [{"type": "command", "command": "python3 -I \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard.py\" post-edit"}]
+      }
+    ]
+  }
+}

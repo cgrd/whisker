@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT
+# Pinned tools for `make check` and CI. Install with `make tools`.
+actionlint-py==1.7.12.25
+pytest==9.1.1
+reuse==6.2.0
+ruff==0.17.2
+shellcheck-py==0.11.0.1
+zizmor==1.31.1

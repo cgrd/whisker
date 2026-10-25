@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: MIT
+name: Bug report
+description: Something doesn't work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Whisker version
+      description: Output of `~/Applications/Whisker-x86_64.AppImage --version`
+      placeholder: whisker 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distro
+      placeholder: SteamOS 3.7, Arch, Fedora 42, ...
+    validations:
+      required: true
+  - type: dropdown
+    id: session
+    attributes:
+      label: Session
+      options:
+        - Steam Deck Game Mode
+        - Steam Deck Desktop Mode
+        - KDE Plasma (Wayland)
+        - GNOME (Wayland)
+        - Sway / Hyprland / other wlroots
+        - X11 session
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: trigger
+    attributes:
+      label: Trigger
+      multiple: true
+      options:
+        - Steam Deck back button
+        - Keyboard hotkey
+        - Foot pedal
+        - Decky Record button
+        - Other
+  - type: textarea
+    id: config
+    attributes:
+      label: Config check
+      description: Output of `~/Applications/Whisker-x86_64.AppImage --check-config`
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Output of `journalctl --user -u whisker -b --no-pager | tail -100`. Remove anything private (transcribed text shows up here).
+      render: text
+    validations:
+      required: true

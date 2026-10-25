@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: MIT
+name: Bump CMake dependencies
+
+on:
+  schedule:
+    - cron: "41 6 * * 2"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  bump:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      # PRs opened with the default token don't trigger CI; a fine-grained BOT_TOKEN fixes that
+      GH_TOKEN: ${{ secrets.BOT_TOKEN || github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Open PRs for newer pins
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          bump() {
+            local var="$1" name="$2" new="$3"
+            local old
+            old=$(sed -n "s/^set($var \([^ ]*\) .*/\1/p" CMakeLists.txt)
+            [ -n "$new" ] && [ "$old" != "$new" ] || { echo "$name is current ($old)"; return 0; }
+            local branch="deps/$name-${new:0:12}"
+            if git ls-remote --exit-code origin "refs/heads/$branch" >/dev/null; then
+              echo "$branch already open"
+              return 0
+            fi
+            git switch -c "$branch" origin/main
+            sed -i "s/^set($var $old /set($var $new /" CMakeLists.txt
+            git commit -s -am "build(deps): bump $name to ${new:0:12}"
+            git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$branch"
+            gh pr create --base main --head "$branch" --label dependencies \
+              --title "build(deps): bump $name to ${new:0:12}" \
+              --body "Automated bump of \`$var\` from \`$old\` to \`$new\`. CI builds and tests it; check the upstream changelog before merging."
+            git switch -
+          }
+
+          gh label create dependencies --color 0366D6 2>/dev/null || true
+          bump TRANSCRIBE_CPP_TAG transcribe.cpp \
+            "$(git ls-remote https://github.com/handy-computer/transcribe.cpp refs/heads/main | cut -f1)"
+          bump IMGUI_TAG imgui "$(gh api repos/ocornut/imgui/releases/latest --jq .tag_name)"
