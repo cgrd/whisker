@@ -84,7 +84,7 @@ Versions follow semver; release-please derives them from PR titles (`fix` bumps 
 
 To rebuild assets for an existing tag, run the Release workflow manually with that tag.
 
-Workflows started with the default `GITHUB_TOKEN` don't trigger other workflows, so CI won't run on the release PR or on `deps-bump` PRs. Either merge those using your admin bypass, or add a fine-grained personal access token as the `BOT_TOKEN` secret (this repo only, Contents and Pull requests read/write); the workflows use it when present.
+PRs opened with the default `GITHUB_TOKEN` (the release PR, `deps-bump` PRs) count as coming from an outside contributor, so their CI waits for "Approve and run" in the Actions tab, and the Conventions check doesn't start until you close and reopen the PR. The Conventions check skips the template for release-please's own PR. Either approve the runs, merge using your admin bypass, or add a fine-grained personal access token as the `BOT_TOKEN` secret (this repo only, Contents and Pull requests read/write); the workflows use it when present.
 
 ## Security reports
 
