@@ -17,7 +17,9 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 mkdir -p "$HOME/homebrew/plugins" "$(dirname "$CONFIG")"
 echo "backend: cpu" > "$CONFIG"
 
-bash scripts/install.sh
+out=$(bash scripts/install.sh 2>&1) || { echo "$out"; fail "install exited non-zero"; }
+echo "$out"
+grep -q "Whisker .* is installed" <<<"$out" || fail "install did not end with the installed message"
 [ -x "$APPIMAGE" ] || fail "AppImage not installed"
 "$APPIMAGE" --version | grep -q '^whisker ' || fail "installed AppImage does not run"
 [ -f "$PLUGIN/main.py" ] && [ -f "$PLUGIN/dist/index.js" ] || fail "Decky plugin not installed"
@@ -35,5 +37,21 @@ bash scripts/install.sh --uninstall
 
 bash scripts/install.sh --uninstall --purge
 [ ! -e "$CONFIG" ] || fail "--purge kept the config"
+
+# sudo fails and the user is not root, like an SSH session without a TTY on a Deck
+fakebin=$(mktemp -d)
+trap 'rm -rf "$fakebin"' EXIT
+printf '#!/bin/sh\nexit 1\n' > "$fakebin/sudo"
+printf '#!/bin/sh\n[ "$1" = -u ] && echo 1000 || exec /usr/bin/id "$@"\n' > "$fakebin/id"
+chmod +x "$fakebin/sudo" "$fakebin/id"
+
+status=0
+out=$(PATH="$fakebin:$PATH" bash scripts/install.sh 2>&1) || status=$?
+echo "$out"
+[ "$status" -ne 0 ] || fail "install exited 0 although the Decky plugin step failed"
+grep -q "Decky plugin was NOT installed" <<<"$out" || fail "failed Decky step printed no error"
+grep -q "Whisker .* is installed" <<<"$out" || fail "failed Decky step skipped the summary"
+[ -x "$APPIMAGE" ] || fail "failed Decky step broke the AppImage install"
+[ ! -e "$PLUGIN" ] || fail "plugin installed despite failing sudo"
 
 echo "install.sh checks passed"

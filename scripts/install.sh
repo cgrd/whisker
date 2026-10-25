@@ -10,7 +10,7 @@
 #                         file:///path/to/dist (any curl URL works)
 #   WHISKER_SKIP_SYSTEMD  set to 1 to skip systemd and udev steps
 #   WHISKER_SKIP_MODEL    set to 1 to skip the model download
-set -euo pipefail
+set -Eeuo pipefail
 
 RELEASE_URL="${WHISKER_RELEASE_URL:-https://github.com/cgrd/whisker/releases/latest/download}"
 SKIP_SYSTEMD="${WHISKER_SKIP_SYSTEMD:-0}"
@@ -28,7 +28,14 @@ DECKY_PLUGINS="$HOME/homebrew/plugins"
 UDEV_RULES=(/etc/udev/rules.d/70-whisker.rules /etc/udev/rules.d/70-pedal-stt.rules)
 
 say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
-die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+warn() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; }
+die() { warn "$@"; exit 1; }
+trap 'die "command failed (line $LINENO): $BASH_COMMAND"' ERR
+
+retry_hint() {
+    echo "Run the installer again in a terminal so sudo can ask for your password:" >&2
+    echo "  curl -fsSL $RELEASE_URL/install.sh | bash" >&2
+}
 
 as_root() {
     if [ "$(id -u)" -eq 0 ]; then
@@ -69,7 +76,8 @@ stop_old_install() {
 remove_decky_plugin() {
     [ -d "$DECKY_PLUGINS/Whisker" ] || return 0
     say "Removing the Decky plugin. The plugin folder belongs to root, so sudo will ask for your password."
-    as_root sh -c "rm -rf '$DECKY_PLUGINS/Whisker' && (systemctl restart plugin_loader 2>/dev/null || true)"
+    as_root sh -c "rm -rf '$DECKY_PLUGINS/Whisker' && (systemctl restart plugin_loader 2>/dev/null || true)" \
+        || { warn "could not remove the Decky plugin ($DECKY_PLUGINS/Whisker)"; retry_hint; exit 1; }
 }
 
 remove_udev_rules() {
@@ -80,7 +88,8 @@ remove_udev_rules() {
     done
     [ ${#found[@]} -eq 0 ] && return 0
     say "Removing the foot pedal udev rule. This needs sudo."
-    as_root rm -f "${found[@]}"
+    as_root rm -f "${found[@]}" \
+        || { warn "could not remove the udev rule"; retry_hint; exit 1; }
     as_root udevadm control --reload-rules || true
 }
 
@@ -155,7 +164,10 @@ install_decky_plugin() {
     say "(On a Steam Deck, set one first with 'passwd' if you never have.)"
     as_root sh -c "rm -rf '$DECKY_PLUGINS/Whisker' \
         && python3 -m zipfile -e '$zip' '$DECKY_PLUGINS' \
-        && (systemctl restart plugin_loader 2>/dev/null || true)"
+        && (systemctl restart plugin_loader 2>/dev/null || true)" && return 0
+    warn "the Decky plugin was NOT installed or updated, the old version may still be in place"
+    retry_hint
+    return 1
 }
 
 do_install() {
@@ -203,7 +215,10 @@ do_install() {
         systemctl --user start whisker
     fi
 
-    has_decky && install_decky_plugin "$tmp/Whisker-decky.zip"
+    local decky_failed=0
+    if has_decky; then
+        install_decky_plugin "$tmp/Whisker-decky.zip" || decky_failed=1
+    fi
 
     echo
     say "Whisker $("$APPIMAGE" --version | cut -d' ' -f2) is installed"
@@ -217,6 +232,10 @@ do_install() {
     fi
     echo "  * Logs: journalctl --user -u whisker"
     echo "  * Uninstall: curl -fsSL $RELEASE_URL/install.sh | bash -s -- --uninstall"
+    if [ "$decky_failed" = 1 ]; then
+        warn "the Decky plugin step failed, so the plugin is not up to date (see above)"
+        exit 1
+    fi
 }
 
 main() {
