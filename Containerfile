@@ -86,8 +86,8 @@ RUN curl -sL https://downloads.xiph.org/releases/opus/libopusenc-0.2.1.tar.gz | 
         --disable-doc --disable-examples \
     && make -j$(nproc) && make install
 
-RUN curl -sL https://github.com/libsdl-org/SDL/releases/download/release-2.30.10/SDL2-2.30.10.tar.gz | tar xz \
-    && cd SDL2-2.30.10 \
+RUN curl -sL https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-2.32.10.tar.gz | tar xz \
+    && cd SDL2-2.32.10 \
     && cmake -B build -DCMAKE_INSTALL_PREFIX=$PREFIX \
         -DSDL_SHARED=OFF -DSDL_STATIC=ON \
         -DSDL_X11=OFF -DSDL_WAYLAND=ON \
