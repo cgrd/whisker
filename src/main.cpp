@@ -135,7 +135,7 @@ static void doTranscribe(const PedalConfig& pcfg, AudioCapture& audio, SpeechToT
     if (cue) cue->play(false);
     if (haptic) {
         haptic->pulse(80, 0x8000);
-        std::this_thread::sleep_for(std::chrono::milliseconds(160));
+        std::this_thread::sleep_for(std::chrono::milliseconds(80));
         haptic->pulse(80, 0x8000);
     }
     if (samples.empty()) {
@@ -300,15 +300,6 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    Haptic haptic;
-    bool has_haptic = cfg.haptic;
-    if (has_haptic) {
-        if (!haptic.init()) {
-            fprintf(stderr, "whisker: haptic unavailable, continuing without\n");
-            has_haptic = false;
-        }
-    }
-
     Overlay overlay;
     bool has_overlay = has_transcribe && cfg.overlay;
     if (has_overlay) {
@@ -361,6 +352,15 @@ int main(int argc, char* argv[]) {
         has_gamepad = gamepad.init(cfg.trigger_button);
         if (!has_gamepad)
             fprintf(stderr, "whisker: failed to init gamepad trigger\n");
+    }
+
+    Haptic haptic;
+    bool has_haptic = cfg.haptic;
+    if (has_haptic) {
+        if (!haptic.init(has_gamepad ? gamepad.path() : "")) {
+            fprintf(stderr, "whisker: haptic unavailable, continuing without\n");
+            has_haptic = false;
+        }
     }
 
     if (has_hotkey || has_gamepad || has_deckpad) {

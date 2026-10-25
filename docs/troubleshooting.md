@@ -24,6 +24,10 @@ journalctl --user -u whisker -b --no-pager | tail -50
 * Game Mode: the overlay is an X11 window using Gamescope's `STEAM_OVERLAY` slot. The journal should say `overlay: selected gamescope backend`. Screenshots taken through the XDG portal or Steam only capture the game plane, so the overlay never appears in them even when it's on screen.
 * Desktop: the overlay needs the wlr-layer-shell protocol (KDE Plasma, Sway, Hyprland and other wlroots compositors). GNOME doesn't support it yet, so there's no overlay there; dictation still works.
 
+## No vibration, or the wrong controller vibrates
+
+Whisker rumbles the gamepad you set as the trigger, if it supports rumble, otherwise the Steam Deck's built-in controller, otherwise nothing. It never uses virtual pads such as Steam Input's, which forward rumble to whichever controller Steam picks. The journal shows `haptic: using ...` or `haptic: no physical rumble device for the trigger` on startup.
+
 ## Foot pedal not detected
 
 The Elgato Stream Deck Pedal is read through hidraw, which needs the udev rule that `--install-service` (`70-whisker.rules`) or `./install.sh` (`70-pedal-stt.rules`) installs. Check it exists in `/etc/udev/rules.d/`, then unplug and replug the pedal. The journal says `waiting for pedal...` until it's found.
