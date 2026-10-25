@@ -57,4 +57,5 @@ Don't retry these without new information.
 * **submit_key.** The global `submit_key` overrides a pedal's `suffix`; Enter is skipped when the text is empty or already ends in a newline (`effectiveSubmitKey`, tested).
 * **Deck mic** can sit muted at volume 0, which shows up as `below noise threshold (rms=0.000000)`.
 * **Desktop pedal** access needs the udev rule (`70-pedal-stt.rules`, installed as `70-whisker.rules`) tagging the Elgato pedal's hidraw/usb/input nodes with `uaccess`.
+* **CPU baseline.** ggml defaults to `-march=native`, so a CI build once picked up the runner's AVX-512 and crashed with SIGILL at model load on Zen 2/3 (#13). Release builds keep `WHISKER_NATIVE=OFF` (x86-64-v3: AVX2, FMA, F16C, BMI2), and `scripts/check-cpu-baseline.sh` fails the build if the shipped binary uses AVX-512. `GGML_CPU_ALL_VARIANTS` would add runtime dispatch but requires `GGML_BACKEND_DL` and shared ggml libraries, which the static linking policy rules out.
 * **Testing on hardware.** Use `scripts/deck-test.sh` / `make deck-test` with `DECK_HOST` set. Never run code from an unreviewed fork PR on real hardware.

@@ -56,6 +56,9 @@ jobs:
           sudo chown -R "$(id -u):$(id -g)" dist
           scripts/package-release.sh dist
 
+      - name: Check CPU baseline
+        run: scripts/check-cpu-baseline.sh dist/Whisker-x86_64.AppImage
+
       - id: name
         run: echo "artifact=whisker-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
 

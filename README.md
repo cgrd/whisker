@@ -4,6 +4,8 @@ Speech-to-text for Linux and the Steam Deck. Hold a button or foot pedal, speak,
 
 Transcription runs locally with an NVIDIA Parakeet model (Vulkan on desktop GPUs, CPU on the Deck). Nothing is sent to the cloud.
 
+Needs a 64-bit x86 CPU with AVX2 (x86-64-v3): Intel Haswell (2013), AMD Zen 1 or newer, which includes the Steam Deck.
+
 ## Install
 
 ### One line (desktop Linux and Steam Deck)
@@ -93,6 +95,8 @@ make test     # C++ unit tests (ctest) and Decky plugin tests (pytest)
 ```
 
 Vulkan is on by default; disable it with `cmake -B build -DWHISKER_VULKAN=OFF`.
+
+Builds target the x86-64-v3 baseline so they run on any supported CPU. For a binary tuned to your own CPU (it may not run on other machines), build with `make CMAKE_ARGS=-DWHISKER_NATIVE=ON`.
 
 ### Release build (AppImage)
 
