@@ -111,7 +111,18 @@ bool Controllers::init(const std::string& trigger) {
         fprintf(stderr, "controller: epoll_create1 failed: %s\n", strerror(errno));
         return false;
     }
+    if (trigger_) {
+        fprintf(stderr, "controller: listening for %s\n", formatButtonChord(trigger_).c_str());
+        openAll();
+    }
+    return true;
+}
 
+// An open Valve hidraw node counts as a hid-steam client, which hides the kernel's evdev
+// gamepad and lizard mode for that device, so nothing is opened until it's needed.
+void Controllers::openAll() {
+    if (opened_) return;
+    opened_ = true;
     inotify_fd_ = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
     if (inotify_fd_ >= 0) {
         inotify_add_watch(inotify_fd_, "/dev", IN_CREATE | IN_ATTRIB | IN_DELETE);
@@ -125,8 +136,6 @@ bool Controllers::init(const std::string& trigger) {
     }
 
     scan();
-    if (trigger_) fprintf(stderr, "controller: listening for %s\n", formatButtonChord(trigger_).c_str());
-    return true;
 }
 
 void Controllers::close() {
@@ -135,6 +144,7 @@ void Controllers::close() {
         ::close(d.fd);
     }
     devices_.clear();
+    opened_ = false;
     if (inotify_fd_ >= 0) { ::close(inotify_fd_); inotify_fd_ = -1; }
     if (epoll_fd_ >= 0) { ::close(epoll_fd_); epoll_fd_ = -1; }
 }
@@ -295,6 +305,7 @@ int Controllers::readEvent() {
 }
 
 std::string Controllers::capture(int timeout_ms, const volatile sig_atomic_t& running) {
+    openAll();
     std::map<std::string, ChordCapture> captures;
     for (const auto& d : devices_) captures[d.path].armed = d.buttons == 0;
     std::string result;

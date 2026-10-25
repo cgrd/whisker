@@ -11,7 +11,7 @@
 // Game Mode), everything else over evdev. One epoll fd covers all devices and hotplug.
 class Controllers {
 public:
-    // Opens all controllers; an invalid trigger is logged and ignored so capture still works.
+    // Opens all controllers if a trigger is set; an invalid trigger is logged and ignored.
     bool init(const std::string& trigger);
     void close();
     int fd() const { return epoll_fd_; }
@@ -22,7 +22,7 @@ public:
     // Path of the device that last pressed the trigger.
     const std::string& lastTrigger() const { return last_trigger_; }
 
-    // Waits for one button or chord to be pressed and released on any device.
+    // Opens all controllers, then waits for one button or chord pressed and released on any device.
     // Returns "<chord> <device name>" or "" on timeout.
     std::string capture(int timeout_ms, const volatile sig_atomic_t& running);
 
@@ -32,10 +32,12 @@ public:
 private:
     int epoll_fd_ = -1;
     int inotify_fd_ = -1;
+    bool opened_ = false;
     ButtonSet trigger_ = 0;
     std::string last_trigger_;
     std::vector<InputDevice> devices_;
 
+    void openAll();
     void scan();
     void openNode(const std::string& path);
     void removeDevice(int fd);
