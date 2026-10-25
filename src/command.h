@@ -15,5 +15,4 @@ private:
     int server_fd_ = -1;
     int client_fd_ = -1;
     std::string path_;
-    std::string buf_;
 };

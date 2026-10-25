@@ -108,6 +108,7 @@ static void sleepMs(int ms) {
 
 void hapticPulse(InputDevice& dev, int duration_ms, int strength) {
     auto s = static_cast<uint16_t>(strength);
+    if (dev.rumble != RumbleKind::None) fprintf(stderr, "haptic: %d ms pulse on %s\n", duration_ms, dev.path.c_str());
     switch (dev.rumble) {
     case RumbleKind::None:
         return;

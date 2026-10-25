@@ -298,8 +298,10 @@ int Controllers::readEvent() {
     int result = 0;
     drain([&](InputDevice& dev, ButtonSet before) {
         result = chordTransition(before, dev.buttons, trigger_);
+        if (result == 0) return false;
         if (result == 1) last_trigger_ = dev.path;
-        return result != 0;
+        fprintf(stderr, "controller: trigger %s on %s\n", result == 1 ? "down" : "up", dev.path.c_str());
+        return true;
     });
     return result;
 }

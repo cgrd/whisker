@@ -40,6 +40,9 @@ A change is done when all of these hold:
 
 * `make check` passes locally, and `make check-full` for changes to the build, packaging, `scripts/install.sh` or the AppImage
 * New pure logic has tests in `tests/` (registered in `tests/CMakeLists.txt`) or `decky/tests/`
+* Every bug fix adds a regression test that fails without the fix
+* Every new controller adds a report fixture and decoder test in `tests/test_buttons.cpp` (see [docs/controllers.md](docs/controllers.md))
+* Input changes pass `make hil-test` (virtual controllers via uhid/uinput, also the `hil` CI job and part of `make deck-test`)
 * Behavior changes are reflected in `README.md`, `docs/`, the sample `config.yaml` and the Decky plugin
 * Hardware-facing changes (`src/controllers*`, `src/buttons*`, `src/haptic*`, `src/overlay*`, `src/pedal*`, `src/keyboard*`, `decky/`, the service unit) say in the PR how they were tested on real hardware, or that they weren't
 * The PR body follows the template and CI is green
@@ -56,6 +59,8 @@ Don't retry these without new information.
 * **Button names** follow Steam's, by position: L4/R4 are the upper back buttons and L5/R5 the lower ones on the Deck and the Steam Controller (`button_back_left_upper` = L4, `button_back_left` = L5). A user who feels a mismatch is holding a different shell, not a different button.
 * **Back paddles on other controllers** use `BTN_GRIPL`/`GRIPL2`/`GRIPR`/`GRIPR2` since Linux 6.17. xpad used `BTN_TRIGGER_HAPPY5-8` before that, which other drivers use for unrelated buttons, so that fallback is limited to Microsoft's vendor ID.
 * **Hotplug** retries a node on `IN_ATTRIB` because udev sets permissions after the node appears.
+* **Command socket** clients connect and then write, sometimes a moment later (asyncio). Only the listening socket is polled, so `readCommand` reads one line per connection with a short timeout. Caught by `make hil-test`.
+* **`make hil-test` with Steam running** makes Steam pick up the fake Steam Controller. Use `HIL_ARGS=--no-uhid` on a desktop where Steam runs.
 * **Per-game Steam Input bindings** can steal the trigger button (Chiaki bound L5 to "end session"). Users must leave the button unbound per game.
 * **Overlay under Gamescope.** Wayland layer-shell surfaces are never composited: they land in Gamescope's `externalOverlayWindow` slot, which MangoApp already holds via X11. The working approach is a full-width X11 window with the `STEAM_OVERLAY` and `GAMESCOPE_NO_FOCUS` atoms. Don't try layer-shell on Gamescope.
 * **Overlay backend selection** happens per recording: a connectable `gamescope-0` (or `$GAMESCOPE_WAYLAND_DISPLAY`) socket in `$XDG_RUNTIME_DIR` selects the Gamescope backend on `$DISPLAY` (default `:0`); otherwise layer-shell on `$WAYLAND_DISPLAY`, then any other `wayland-*` socket; otherwise no overlay. Tested in `tests/test_overlay.cpp`.

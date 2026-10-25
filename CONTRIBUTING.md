@@ -46,6 +46,7 @@ make lint                # shellcheck, ruff, actionlint, zizmor, REUSE
 make conventions         # the PR conventions check against origin/main, including uncommitted files
 make check               # all of the above
 make check-full          # plus the release container build and the install script test (podman)
+make hil-test            # virtual controllers (uhid, uinput, via sudo) against a private Whisker instance
 ctest --test-dir build   # C++ tests only
 ./build/whisker --check-config -c config.yaml
 ```

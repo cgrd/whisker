@@ -37,4 +37,4 @@ If the device can rumble, add its product to `hidrawRumbleKind` in `src/haptic.c
 
 For an evdev controller with unusual codes, extend `evdevKey` in `src/buttons.cpp`, limited to the driver's vendor ID if the codes mean something else on other devices.
 
-Run `make check`, then add the controller to the table in the README. Paste the capture output in the PR.
+Run `make check` and `make hil-test`, then add the controller to the table in the README. For a Valve device whose reports differ from the 2026 Steam Controller, give `scripts/hil-test.py` a fake for it too. Paste the capture output in the PR.

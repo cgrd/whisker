@@ -33,6 +33,12 @@ static void signalHandler(int) {
     g_running = 0;
 }
 
+static bool usesPedal(const Config& cfg) {
+    for (auto& p : cfg.pedals)
+        if (p.action != PedalAction::None) return true;
+    return false;
+}
+
 static bool needsTranscribe(const Config& cfg) {
     if (!cfg.trigger_key.empty()) return true;
     if (!cfg.trigger_button.empty()) return true;
@@ -348,7 +354,9 @@ int main(int argc, char* argv[]) {
     bool has_button = has_controllers && controllers.hasTrigger();
     bool has_haptic = has_controllers && cfg.haptic;
 
-    if (has_hotkey || has_button) {
+    if (!usesPedal(cfg)) {
+        has_pedal = false;
+    } else if (has_hotkey || has_button) {
         has_pedal = pedal.open();
         if (!has_pedal)
             fprintf(stderr, "whisker: no pedal found, using other triggers\n");

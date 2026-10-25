@@ -4,7 +4,9 @@
 #
 #   DECK_HOST=<deck-host> scripts/deck-test.sh [Whisker-x86_64.AppImage] [Whisker-decky.zip]
 #
-# Builds missing artifacts with build-container.sh.
+# Builds missing artifacts with build-container.sh. Then runs scripts/hil-test.py on the Deck
+# with virtual controllers (and replugs a Steam Controller puck if one is connected);
+# SKIP_HIL=1 skips that.
 # Never point this at artifacts from an untrusted PR without reading the diff first.
 set -euo pipefail
 
@@ -29,3 +31,13 @@ ssh -t "$DECK" "sudo sh -c 'rm -rf /home/deck/homebrew/plugins/Whisker \
 
 echo "==> Installing the AppImage and running checks"
 ssh "$DECK" bash -s -- /tmp/Whisker-x86_64.AppImage --deck < scripts/smoke-checks.sh
+
+if [ "${SKIP_HIL:-0}" = 1 ]; then
+    exit 0
+fi
+echo "==> Hardware-in-the-loop test with virtual controllers (sudo on the Deck)"
+ssh "$DECK" "rm -rf /tmp/whisker-hil && mkdir -p /tmp/whisker-hil/scripts /tmp/whisker-hil/decky"
+scp -q scripts/hil-test.py "$DECK:/tmp/whisker-hil/scripts/"
+scp -q decky/main.py "$DECK:/tmp/whisker-hil/decky/"
+ssh -t "$DECK" "sudo python3 -I /tmp/whisker-hil/scripts/hil-test.py \
+    --whisker /home/deck/Applications/Whisker-x86_64.AppImage --user deck --service --puck"
