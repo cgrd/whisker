@@ -60,11 +60,14 @@ jobs:
           sudo modprobe hid-steam || true
           ls -l /dev/uinput /dev/uhid
       - name: Virtual controllers against the AppImage
-        env:
-          APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
-          (cd dist && python3 -m zipfile -e Whisker-x86_64.AppImage.zip . && chmod +x Whisker-x86_64.AppImage)
-          sudo python3 -I scripts/hil-test.py --whisker "$PWD/dist/Whisker-x86_64.AppImage"
+          cd dist
+          python3 -m zipfile -e Whisker-x86_64.AppImage.zip .
+          chmod +x Whisker-x86_64.AppImage
+          # AppRun execs whisker, so SIGTERM reaches the daemon; the extract-and-run runtime would absorb it
+          ./Whisker-x86_64.AppImage --appimage-extract
+          cd ..
+          sudo python3 -I scripts/hil-test.py --whisker "$PWD/dist/squashfs-root/AppRun"
 
   install-script:
     needs: build

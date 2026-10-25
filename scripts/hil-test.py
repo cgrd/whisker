@@ -28,6 +28,7 @@ import importlib.util
 import os
 import pwd
 import re
+import signal
 import socket
 import struct
 import subprocess
@@ -228,6 +229,22 @@ class Whisker:
             self.proc.kill()
             self.proc.wait()
         return self.proc.returncode
+
+    def kill_leftovers(self):
+        """Kills processes started by this instance that outlived stop(); returns their pids."""
+        marker = f"HOME={self.workdir}".encode()
+        left = []
+        for entry in os.listdir("/proc"):
+            if not entry.isdigit() or int(entry) == os.getpid():
+                continue
+            try:
+                with open(f"/proc/{entry}/environ", "rb") as f:
+                    if marker in f.read().split(b"\0"):
+                        os.kill(int(entry), signal.SIGKILL)
+                        left.append(int(entry))
+            except OSError:
+                continue
+        return left
 
 
 def capture_over_socket(path, press, timeout=12):
@@ -479,6 +496,8 @@ def run_phase(args, workdir, trigger, body):
     finally:
         code = whisker.stop()
         record(f"whisker exits cleanly ({trigger})", code == 0, f"exit code {code}")
+        left = whisker.kill_leftovers()
+        record(f"no whisker process left alive ({trigger})", not left, f"killed pids {left}")
 
 
 def main():
