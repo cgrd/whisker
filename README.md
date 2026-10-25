@@ -88,8 +88,8 @@ The easiest way to pick one is the Decky plugin's "Press the Button You Want": p
 | Controller | Read through | Status |
 |---|---|---|
 | Steam Deck built-in controller | hidraw | tested |
-| Steam Controller (2026) with the wireless puck | hidraw | button layout captured on a Deck |
-| Steam Controller (2026) over USB, Bluetooth or the Steam Machine receiver | hidraw | untested |
+| Steam Controller (2026) over USB or with the wireless puck | hidraw | tested |
+| Steam Controller (2026) over Bluetooth or the Steam Machine receiver | hidraw | untested |
 | Steam Controller (2015), wired or dongle | hidraw | untested, no rumble |
 | Xbox, PlayStation and other gamepads with a Linux driver | evdev | untested; back paddles need Linux 6.17 or newer, except Xbox Elite |
 
