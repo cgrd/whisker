@@ -113,3 +113,10 @@ def test_pull_request_template():
     assert "fill in 'AI-assisted:'" in found
     assert rules(pr_problems("fix: x", "### What\n\n### Tested\nyes\n### Checklist\n")) == \
         ["pr-template", "pr-template"]
+
+
+def test_release_please_pr_skips_the_template():
+    body = ":robot: I have created a release *beep* *boop*"
+    assert pr_problems("chore(main): release 1.2.0", body, "github-actions[bot]") == []
+    assert rules(pr_problems("chore(main): release 1.2.0", body, "someone")) == ["pr-template"] * 3
+    assert rules(pr_problems("chore: something else", body, "github-actions[bot]")) == ["pr-template"] * 3
