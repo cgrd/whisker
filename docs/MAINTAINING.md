@@ -65,6 +65,7 @@ Treat every fork PR as untrusted until you've read all of it.
 ## Merging
 
 * Squash merge only. The PR title becomes the commit message, so fix it to a proper Conventional Commit (`fix(deckpad): ...`) before merging if needed.
+* Review settings: with one maintainer the main ruleset requires 0 approvals and no code owner review. When a second maintainer joins, set approvals to 1 and turn code owner review on. Never merge with admin bypass.
 * Check out a PR locally (after reading it):
   ```sh
   gh pr checkout 123
