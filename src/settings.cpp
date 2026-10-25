@@ -621,7 +621,14 @@ static void setAutostart(bool enable) {
     }
 }
 
-static void drawAudioTab(Config& cfg, std::vector<AudioSource>& sources, int& selected_source) {
+static SettingsRect itemRect() {
+    ImVec2 min = ImGui::GetItemRectMin();
+    ImVec2 max = ImGui::GetItemRectMax();
+    return {min.x, min.y, max.x, max.y};
+}
+
+static void drawAudioTab(Config& cfg, std::vector<AudioSource>& sources, int& selected_source,
+                         SettingsLayout& layout) {
     ImGui::Text("Audio Input");
     ImGui::Spacing();
 
@@ -654,6 +661,7 @@ static void drawAudioTab(Config& cfg, std::vector<AudioSource>& sources, int& se
     ImGui::Spacing();
 
     ImGui::Checkbox("Show overlay during recording", &cfg.overlay);
+    layout.overlay_checkbox = itemRect();
     ImGui::Checkbox("Show tray icon", &cfg.tray);
     ImGui::TextDisabled("Send after dictation");
     submitKeyCombo("##submit_key", cfg.submit_key);
@@ -666,6 +674,7 @@ static void drawAudioTab(Config& cfg, std::vector<AudioSource>& sources, int& se
     ImGui::TextDisabled("Hold this key combo to record (e.g. ctrl+shift+space)");
     ImGui::SetNextItemWidth(-1);
     ImGui::InputText("##trigger_key", &cfg.trigger_key);
+    layout.trigger_input = itemRect();
 
     {
         ImGui::Text("Noise Gate");
@@ -862,6 +871,181 @@ static void drawHistoryTab(std::vector<HistoryEntry>& entries, bool& needs_reloa
     }
 }
 
+struct SettingsUi {
+    std::string config_path;
+    Config cfg;
+    std::vector<AudioSource> sources;
+    int selected_source = -1;
+    std::vector<ModelState> model_states;
+    std::vector<ScannedModel> scanned_models;
+    bool scanned_done = false;
+    std::vector<HistoryEntry> history_entries;
+    bool history_needs_reload = false;
+    int active_tab = 0;
+    bool running = true;
+    bool saved = false;
+    SettingsLayout layout;
+};
+
+static void setupImGui() {
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+    ImFontConfig font_cfg;
+    font_cfg.FontDataOwnedByAtlas = false;
+    io.Fonts->AddFontFromMemoryTTF(
+        const_cast<unsigned char*>(AtkinsonHyperlegible_Regular_ttf),
+        AtkinsonHyperlegible_Regular_ttf_len, 18.0f, &font_cfg);
+
+    applyStyle();
+}
+
+static void loadUi(SettingsUi& ui, const std::string& config_path, std::vector<AudioSource> sources) {
+    ui.config_path = config_path;
+    ui.cfg = loadConfig(config_path);
+    ui.sources = std::move(sources);
+    for (int i = 0; i < static_cast<int>(ui.sources.size()); ++i) {
+        if (ui.sources[i].id == ui.cfg.audio_device) {
+            ui.selected_source = i;
+            break;
+        }
+    }
+
+    ui.model_states.resize(NUM_KNOWN_MODELS);
+    for (int i = 0; i < NUM_KNOWN_MODELS; ++i) {
+        ui.model_states[i].local_path = findModelPath(known_models[i].filename);
+        ui.model_states[i].downloaded = !ui.model_states[i].local_path.empty();
+    }
+    if (ui.cfg.model_path.empty() || !fileExists(ui.cfg.model_path)) {
+        for (int i = 0; i < NUM_KNOWN_MODELS; ++i) {
+            if (ui.model_states[i].downloaded) {
+                ui.cfg.model_path = ui.model_states[i].local_path;
+                break;
+            }
+        }
+    }
+    ui.history_entries = loadHistoryEntries();
+}
+
+static void drawFrame(SettingsUi& ui) {
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::NewFrame();
+
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(io.DisplaySize);
+    ImGui::Begin("##main", nullptr,
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+        ImGuiWindowFlags_NoBringToFrontOnFocus |
+        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+    float sidebar_w = 140.0f;
+    float bottom_h = 64.0f;
+
+    ImGui::BeginChild("sidebar", ImVec2(sidebar_w, -bottom_h), ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar);
+    ImGui::Spacing();
+
+    const char* tabs[] = {"Audio", "Pedals", "History"};
+    for (int i = 0; i < 3; ++i) {
+        bool selected = (ui.active_tab == i);
+        if (selected) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.00f, 0.50f, 0.80f, 0.60f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.00f, 0.55f, 0.85f, 0.70f));
+        }
+        if (ImGui::Button(tabs[i], ImVec2(sidebar_w - 2 * ImGui::GetStyle().WindowPadding.x, 36)))
+            ui.active_tab = i;
+        if (selected)
+            ImGui::PopStyleColor(2);
+    }
+
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+
+    ImGui::BeginChild("content", ImVec2(0, -bottom_h), ImGuiChildFlags_Borders);
+    ui.layout.content = {ImGui::GetWindowPos().x, ImGui::GetWindowPos().y,
+                         ImGui::GetWindowPos().x + ImGui::GetWindowSize().x,
+                         ImGui::GetWindowPos().y + ImGui::GetWindowSize().y};
+
+    switch (ui.active_tab) {
+    case 0: drawAudioTab(ui.cfg, ui.sources, ui.selected_source, ui.layout); break;
+    case 1: drawPedalsTab(ui.cfg, ui.model_states, ui.scanned_models, ui.scanned_done); break;
+    case 2:
+        if (ui.history_needs_reload) {
+            ui.history_entries = loadHistoryEntries();
+            ui.history_needs_reload = false;
+        }
+        drawHistoryTab(ui.history_entries, ui.history_needs_reload);
+        break;
+    }
+
+    ImGui::EndChild();
+
+    ImGui::SetCursorPosY(io.DisplaySize.y - bottom_h);
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    float btn_w = 100.0f;
+    ImGui::SetCursorPosX(io.DisplaySize.x - 2 * btn_w - 30);
+    if (ImGui::Button("Cancel", ImVec2(btn_w, 32)))
+        ui.running = false;
+    ImGui::SameLine();
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.00f, 0.55f, 0.85f, 0.80f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.00f, 0.65f, 0.95f, 0.90f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.00f, 0.75f, 1.00f, 1.0f));
+    if (ImGui::Button("Save", ImVec2(btn_w, 32))) {
+        saveConfig(ui.cfg, ui.config_path);
+        ui.saved = true;
+        ui.running = false;
+    }
+    ui.layout.save_button = itemRect();
+    ui.layout.save_hovered = ImGui::IsItemHovered();
+    ImGui::PopStyleColor(3);
+
+    ImGui::End();
+    ImGui::Render();
+}
+
+static void presentFrame(SDL_Renderer* renderer) {
+    // The SDL_Renderer backend scales clip rects by the framebuffer scale but leaves vertices in
+    // window coordinates. Without a matching render scale, HiDPI and fractionally scaled Wayland
+    // outputs draw the UI shrunk into the top-left corner, clip it wrongly and offset the mouse.
+    ImGuiIO& io = ImGui::GetIO();
+    SDL_RenderSetScale(renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
+    SDL_SetRenderDrawColor(renderer, 20, 20, 36, 255);
+    SDL_RenderClear(renderer);
+    ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), renderer);
+}
+
+SettingsLayout settingsRenderOffscreen(SDL_Renderer* renderer, const std::string& config_path,
+                                       float width, float height, float framebuffer_scale,
+                                       float mouse_x, float mouse_y, int frames) {
+    setupImGui();
+    ImGui_ImplSDLRenderer2_Init(renderer);
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(width, height);
+    io.DisplayFramebufferScale = ImVec2(framebuffer_scale, framebuffer_scale);
+
+    SettingsUi ui;
+    loadUi(ui, config_path, {});
+    for (int i = 0; i < frames; ++i) {
+        io.AddMousePosEvent(mouse_x, mouse_y);
+        ImGui_ImplSDLRenderer2_NewFrame();
+        drawFrame(ui);
+        presentFrame(renderer);
+    }
+    ImTextureData* atlas = io.Fonts->TexData;
+    ui.layout.font_texture_ready = atlas && atlas->Status == ImTextureStatus_OK &&
+                                   atlas->TexID != ImTextureID_Invalid;
+
+    ImGui_ImplSDLRenderer2_Shutdown();
+    ImGui::DestroyContext();
+    return ui.layout;
+}
+
 int settingsRun(const std::string& config_path) {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -894,143 +1078,27 @@ int settingsRun(const std::string& config_path) {
         return 1;
     }
 
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO();
-    io.IniFilename = nullptr;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-
+    setupImGui();
     ImGui_ImplSDL2_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer2_Init(renderer);
 
-    ImFontConfig font_cfg;
-    font_cfg.FontDataOwnedByAtlas = false;
-    io.Fonts->AddFontFromMemoryTTF(
-        const_cast<unsigned char*>(AtkinsonHyperlegible_Regular_ttf),
-        AtkinsonHyperlegible_Regular_ttf_len, 18.0f, &font_cfg);
+    SettingsUi ui;
+    loadUi(ui, config_path, enumerateAudioSources());
+    g_mic_monitor.start(ui.cfg.audio_device);
 
-    applyStyle();
-
-    Config cfg = loadConfig(config_path);
-    auto sources = enumerateAudioSources();
-    int selected_source = -1;
-    for (int i = 0; i < static_cast<int>(sources.size()); ++i) {
-        if (sources[i].id == cfg.audio_device) {
-            selected_source = i;
-            break;
-        }
-    }
-
-    g_mic_monitor.start(cfg.audio_device);
-
-    std::vector<ModelState> model_states(NUM_KNOWN_MODELS);
-    for (int i = 0; i < NUM_KNOWN_MODELS; ++i) {
-        model_states[i].local_path = findModelPath(known_models[i].filename);
-        model_states[i].downloaded = !model_states[i].local_path.empty();
-    }
-    if (cfg.model_path.empty() || !fileExists(cfg.model_path)) {
-        for (int i = 0; i < NUM_KNOWN_MODELS; ++i) {
-            if (model_states[i].downloaded) {
-                cfg.model_path = model_states[i].local_path;
-                break;
-            }
-        }
-    }
-    std::vector<ScannedModel> scanned_models;
-    bool scanned_done = false;
-
-    auto history_entries = loadHistoryEntries();
-    bool history_needs_reload = false;
-
-    int active_tab = 0;
-    bool running = true;
-    bool saved = false;
-
-    while (running) {
+    while (ui.running) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL2_ProcessEvent(&event);
-            if (event.type == SDL_QUIT) running = false;
+            if (event.type == SDL_QUIT) ui.running = false;
             if (event.type == SDL_WINDOWEVENT &&
-                event.window.event == SDL_WINDOWEVENT_CLOSE) running = false;
+                event.window.event == SDL_WINDOWEVENT_CLOSE) ui.running = false;
         }
 
         ImGui_ImplSDLRenderer2_NewFrame();
         ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
-
-        ImGui::SetNextWindowPos(ImVec2(0, 0));
-        ImGui::SetNextWindowSize(io.DisplaySize);
-        ImGui::Begin("##main", nullptr,
-            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-            ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
-            ImGuiWindowFlags_NoBringToFrontOnFocus |
-            ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-
-        float sidebar_w = 140.0f;
-        float bottom_h = 64.0f;
-
-        ImGui::BeginChild("sidebar", ImVec2(sidebar_w, -bottom_h), ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar);
-        ImGui::Spacing();
-
-        const char* tabs[] = {"Audio", "Pedals", "History"};
-        for (int i = 0; i < 3; ++i) {
-            bool selected = (active_tab == i);
-            if (selected) {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.00f, 0.50f, 0.80f, 0.60f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.00f, 0.55f, 0.85f, 0.70f));
-            }
-            if (ImGui::Button(tabs[i], ImVec2(sidebar_w - 2 * ImGui::GetStyle().WindowPadding.x, 36)))
-                active_tab = i;
-            if (selected)
-                ImGui::PopStyleColor(2);
-        }
-
-        ImGui::EndChild();
-
-        ImGui::SameLine();
-
-        ImGui::BeginChild("content", ImVec2(0, -bottom_h), ImGuiChildFlags_Borders);
-
-        switch (active_tab) {
-        case 0: drawAudioTab(cfg, sources, selected_source); break;
-        case 1: drawPedalsTab(cfg, model_states, scanned_models, scanned_done); break;
-        case 2:
-            if (history_needs_reload) {
-                history_entries = loadHistoryEntries();
-                history_needs_reload = false;
-            }
-            drawHistoryTab(history_entries, history_needs_reload);
-            break;
-        }
-
-        ImGui::EndChild();
-
-        ImGui::SetCursorPosY(io.DisplaySize.y - bottom_h);
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        float btn_w = 100.0f;
-        ImGui::SetCursorPosX(io.DisplaySize.x - 2 * btn_w - 30);
-        if (ImGui::Button("Cancel", ImVec2(btn_w, 32)))
-            running = false;
-        ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.00f, 0.55f, 0.85f, 0.80f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.00f, 0.65f, 0.95f, 0.90f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.00f, 0.75f, 1.00f, 1.0f));
-        if (ImGui::Button("Save", ImVec2(btn_w, 32))) {
-            saveConfig(cfg, config_path);
-            saved = true;
-            running = false;
-        }
-        ImGui::PopStyleColor(3);
-
-        ImGui::End();
-
-        ImGui::Render();
-        SDL_SetRenderDrawColor(renderer, 20, 20, 36, 255);
-        SDL_RenderClear(renderer);
-        ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), renderer);
+        drawFrame(ui);
+        presentFrame(renderer);
         SDL_RenderPresent(renderer);
     }
 
@@ -1043,5 +1111,5 @@ int settingsRun(const std::string& config_path) {
     SDL_DestroyWindow(window);
     SDL_Quit();
 
-    return saved ? 0 : 1;
+    return ui.saved ? 0 : 1;
 }

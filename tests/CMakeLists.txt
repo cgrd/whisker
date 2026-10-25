@@ -39,3 +39,10 @@ set_tests_properties(cli_unknown_flag PROPERTIES TIMEOUT 10)
 add_test(NAME apprun_flags_known
     COMMAND sh -c "! grep 'usr/bin/whisker\"' appimage/AppRun | grep -oE -- '--[a-z-]+' | grep -vxE -- '--(settings|version|help|check-config)'"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+whisker_test(test_settings
+    ${CMAKE_SOURCE_DIR}/src/settings.cpp
+    ${CMAKE_SOURCE_DIR}/src/config.cpp)
+target_include_directories(test_settings PRIVATE ${PIPEWIRE_INCLUDE_DIRS} ${SDL2_INCLUDE_DIRS})
+target_link_libraries(test_settings PRIVATE imgui whisker_assets ${PIPEWIRE_LIBRARIES} ${SDL2_LIBRARIES})
+target_compile_definitions(test_settings PRIVATE SAMPLE_CONFIG="${CMAKE_SOURCE_DIR}/config.yaml")

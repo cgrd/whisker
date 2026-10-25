@@ -155,6 +155,9 @@ add_custom_command(OUTPUT ${ICON_HEADER}
     COMMENT "Embedding icon as C array"
 )
 
+add_library(whisker_assets STATIC src/font_embed.cpp src/icon_embed.cpp ${FONT_HEADER} ${ICON_HEADER})
+target_include_directories(whisker_assets PUBLIC ${CMAKE_BINARY_DIR})
+
 add_library(whisker_protocol OBJECT
     ${LAYER_SHELL_H}
     ${LAYER_SHELL_C}
@@ -183,12 +186,8 @@ add_executable(whisker
     src/clipboard.cpp
     src/tray.cpp
     src/settings.cpp
-    src/font_embed.cpp
-    src/icon_embed.cpp
     src/overlay_gamescope.cpp
     src/overlay_layershell.cpp
-    ${FONT_HEADER}
-    ${ICON_HEADER}
 )
 
 target_include_directories(whisker PRIVATE
@@ -219,6 +218,7 @@ target_link_libraries(whisker PRIVATE
     ${SYSTEMD_LIBRARIES}
     X11::X11
     imgui
+    whisker_assets
 )
 
 install(TARGETS whisker RUNTIME DESTINATION bin)
