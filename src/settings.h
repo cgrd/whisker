@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <map>
 #include <string>
 
 struct SDL_Renderer;
@@ -12,11 +13,15 @@ struct SettingsRect {
 struct SettingsLayout {
     SettingsRect content;
     SettingsRect overlay_checkbox;
-    SettingsRect trigger_input;
     SettingsRect save_button;
     bool save_hovered = false;
     bool font_texture_ready = false;
+    // Interactive items on the drawn page by name, and the one under the mouse.
+    std::map<std::string, SettingsRect> items;
+    std::string hovered;
 };
+
+enum class SettingsTab { Audio, Model, Triggers, History };
 
 int settingsRun(const std::string& config_path);
 
@@ -24,4 +29,5 @@ int settingsRun(const std::string& config_path);
 // framebuffer scale the SDL platform backend would report, so tests can run it headless.
 SettingsLayout settingsRenderOffscreen(SDL_Renderer* renderer, const std::string& config_path,
                                        float width, float height, float framebuffer_scale,
-                                       float mouse_x, float mouse_y, int frames);
+                                       float mouse_x, float mouse_y, int frames,
+                                       SettingsTab tab = SettingsTab::Audio);

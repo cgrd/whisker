@@ -68,7 +68,7 @@ This keeps your settings (`~/.config/pedal-stt/`) and models and recordings (`~/
 
 A pedal can also run a program: set `action: exec` with `exec_press` and/or `exec_release` in `~/.config/pedal-stt/config.yaml` (the Decky plugin can't set these). Commands run without a shell: quotes group arguments, but pipes, `&&`, `$VARIABLES` and `~` aren't expanded. Wrap the command in `sh -c '...'` if you need them.
 
-Change settings from the Whisker entry in your app menu or tray icon, or from Decky's Quick Access menu on the Deck. Logs: `journalctl --user -u whisker`.
+Change settings from the Whisker entry in your app menu or tray icon, or from Decky's Quick Access menu on the Deck. The settings window's Triggers page records the keyboard shortcut and the controller button for you. Logs: `journalctl --user -u whisker`.
 
 If something doesn't work, see [docs/troubleshooting.md](docs/troubleshooting.md).
 
@@ -83,7 +83,7 @@ trigger_button: L3+R3   # both stick clicks, for controllers without back button
 
 A chord starts recording when all its buttons are down on the same controller and stops when any of them comes up. Button names: `A`, `B`, `X`, `Y`, `L1`, `R1`, `L2`, `R2`, `L3`, `R3`, `L4`, `L5`, `R4`, `R5`, `select`, `start`, `guide`, `up`, `down`, `left`, `right`. `L4`/`R4` are the upper back buttons and `L5`/`R5` the lower ones, the same names Steam uses.
 
-The easiest way to pick one is the Decky plugin's "Press the Button You Want": press and release the button or chord on any controller and Whisker saves it.
+The easiest way to pick one is "Press the button you want" on the settings window's Triggers page or in the Decky plugin: press and release the button or chord on any controller and Whisker saves it.
 
 | Controller | Read through | Status |
 |---|---|---|

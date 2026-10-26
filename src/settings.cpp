@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "settings.h"
 #include "config.h"
+#include "trigger_capture.h"
 
 #include <SDL.h>
 #include <imgui.h>
@@ -17,10 +18,15 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <dirent.h>
 #include <fstream>
+#include <mutex>
 #include <string>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/un.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -670,12 +676,6 @@ static void drawAudioTab(Config& cfg, std::vector<AudioSource>& sources, int& se
     ImGui::Separator();
     ImGui::Spacing();
 
-    ImGui::Text("Keyboard Trigger");
-    ImGui::TextDisabled("Hold this key combo to record (e.g. ctrl+shift+space)");
-    ImGui::SetNextItemWidth(-1);
-    ImGui::InputText("##trigger_key", &cfg.trigger_key);
-    layout.trigger_input = itemRect();
-
     {
         ImGui::Text("Noise Gate");
         float bar_w = ImGui::GetContentRegionAvail().x;
@@ -771,14 +771,13 @@ static void drawPedalConfig(const char* name, PedalConfig& pedal) {
     ImGui::PopID();
 }
 
-static void drawPedalsTab(Config& cfg, std::vector<ModelState>& model_states,
-                          std::vector<ScannedModel>& scanned, bool& scanned_done) {
-    drawModelSection(cfg, model_states, scanned, scanned_done);
+static void trackItem(SettingsLayout& layout, const char* name) {
+    layout.items[name] = itemRect();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        layout.hovered = name;
+}
 
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-
+static void drawPedals(Config& cfg, SettingsLayout& layout) {
     ImGui::Text("Pedals");
     ImGui::Spacing();
 
@@ -788,18 +787,268 @@ static void drawPedalsTab(Config& cfg, std::vector<ModelState>& model_states,
     ImGui::BeginChild("left_pedal", ImVec2(col_w, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
     drawPedalConfig("Left", cfg.pedals[0]);
     ImGui::EndChild();
+    trackItem(layout, "left_pedal");
 
     ImGui::SameLine();
 
     ImGui::BeginChild("center_pedal", ImVec2(col_w, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
     drawPedalConfig("Center", cfg.pedals[1]);
     ImGui::EndChild();
+    trackItem(layout, "center_pedal");
 
     ImGui::SameLine();
 
     ImGui::BeginChild("right_pedal", ImVec2(col_w, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
     drawPedalConfig("Right", cfg.pedals[2]);
     ImGui::EndChild();
+    trackItem(layout, "right_pedal");
+}
+
+static std::string commandSocketPath() {
+    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
+    return std::string(runtime ? runtime : "/tmp") + "/whisker.sock";
+}
+
+// The daemon waits up to 10 s for a button, so give it a little longer before giving up.
+static constexpr int kCaptureReplyTimeoutS = 12;
+
+// Asks the running daemon to capture a controller button over its command socket, on a thread
+// so the window keeps drawing while the daemon waits for a press.
+struct ButtonCapture {
+    std::atomic<bool> waiting{false};
+    std::atomic<bool> done{false};
+    CaptureReply reply;
+    std::thread thread;
+    std::mutex mutex;
+    int fd = -1;
+    bool cancelled = false;
+
+    void start() {
+        if (waiting.load()) return;
+        join();
+        cancelled = false;
+        done.store(false);
+        waiting.store(true);
+        thread = std::thread([this]() {
+            reply = request();
+            waiting.store(false);
+            done.store(true);
+        });
+    }
+
+    void stop() {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            cancelled = true;
+            if (fd >= 0) ::shutdown(fd, SHUT_RDWR);
+        }
+        join();
+    }
+
+    void join() {
+        if (thread.joinable()) thread.join();
+    }
+
+    ~ButtonCapture() { stop(); }
+
+private:
+    CaptureReply request() {
+        int s = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+        if (s < 0) return {{}, {}, std::string("socket: ") + strerror(errno)};
+        sockaddr_un addr = {};
+        addr.sun_family = AF_UNIX;
+        std::string path = commandSocketPath();
+        strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
+        if (::connect(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
+            ::close(s);
+            return {{}, {}, "Whisker isn't running"};
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (cancelled) {
+                ::close(s);
+                return {};
+            }
+            fd = s;
+        }
+        timeval timeout = {kCaptureReplyTimeoutS, 0};
+        setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        std::string line;
+        bool complete = false;
+        if (::send(s, "capture\n", 8, MSG_NOSIGNAL) == 8) {
+            char c;
+            while (line.size() < 256 && ::read(s, &c, 1) == 1) {
+                if (c == '\n') {
+                    complete = true;
+                    break;
+                }
+                line += c;
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            fd = -1;
+        }
+        ::close(s);
+        if (!complete) return {{}, {}, "No reply from Whisker"};
+        return parseCaptureReply(line);
+    }
+};
+
+struct TriggerState {
+    bool capturing_key = false;
+    std::string key_message;
+    ButtonCapture button;
+    std::string button_message;
+};
+
+// Draws a value in an input-like frame; empty values show `empty_text` dimmed.
+static void valueBox(const std::string& value, const char* empty_text, float width, bool active) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImGuiStyle& style = ImGui::GetStyle();
+    ImVec2 pos = ImGui::GetCursorScreenPos();
+    float h = ImGui::GetFrameHeight();
+    ImU32 bg = ImGui::GetColorU32(active ? ImGuiCol_FrameBgActive : ImGuiCol_FrameBg);
+    dl->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + h), bg, style.FrameRounding);
+    if (active)
+        dl->AddRect(pos, ImVec2(pos.x + width, pos.y + h), ImGui::GetColorU32(ImGuiCol_CheckMark),
+                    style.FrameRounding, 0, 1.5f);
+    bool empty = value.empty();
+    ImU32 color = ImGui::GetColorU32(empty ? ImGuiCol_TextDisabled : ImGuiCol_Text);
+    dl->AddText(ImVec2(pos.x + style.FramePadding.x, pos.y + style.FramePadding.y), color,
+                empty ? empty_text : value.c_str());
+    ImGui::Dummy(ImVec2(width, h));
+}
+
+static void statusLine(const std::string& message) {
+    if (message.empty()) return;
+    ImGui::TextDisabled("%s", message.c_str());
+}
+
+static void drawKeyboardTrigger(Config& cfg, TriggerState& state, SettingsLayout& layout) {
+    ImGui::Text("Keyboard shortcut");
+    ImGui::TextDisabled("Hold this combo to record, in any app");
+    float box_w = 260.0f;
+    if (state.capturing_key) {
+        std::string held = modifierPrefix(static_cast<Uint16>(SDL_GetModState())) + "...";
+        valueBox(held, "", box_w, true);
+    } else {
+        valueBox(cfg.trigger_key, "Disabled", box_w, false);
+    }
+    trackItem(layout, "shortcut_value");
+    ImGui::SameLine();
+    if (state.capturing_key) {
+        if (ImGui::Button("Cancel##shortcut")) {
+            state.capturing_key = false;
+            state.key_message.clear();
+        }
+    } else if (ImGui::Button("Record shortcut")) {
+        state.capturing_key = true;
+        state.key_message = "Press a key combo, Esc cancels";
+    }
+    trackItem(layout, "record_shortcut");
+    ImGui::SameLine();
+    ImGui::BeginDisabled(cfg.trigger_key.empty() || state.capturing_key);
+    if (ImGui::Button("Clear##shortcut")) {
+        cfg.trigger_key.clear();
+        state.key_message = "Keyboard shortcut disabled";
+    }
+    ImGui::EndDisabled();
+    trackItem(layout, "clear_shortcut");
+    statusLine(state.key_message);
+}
+
+static void drawControllerTrigger(Config& cfg, TriggerState& state, SettingsLayout& layout) {
+    if (state.button.done.exchange(false)) {
+        const CaptureReply& r = state.button.reply;
+        if (!r.button.empty()) {
+            cfg.trigger_button = r.button;
+            state.button_message = "Using " + r.button + (r.device.empty() ? "" : " on " + r.device);
+        } else {
+            state.button_message = r.error;
+        }
+    }
+
+    bool waiting = state.button.waiting.load();
+    ImGui::Text("Controller button");
+    ImGui::TextDisabled("Hold this button or chord on any controller to record");
+    valueBox(cfg.trigger_button, "Disabled", 260.0f, waiting);
+    trackItem(layout, "button_value");
+    ImGui::SameLine();
+    ImGui::BeginDisabled(waiting);
+    if (ImGui::Button("Press the button you want")) {
+        state.button.start();
+        state.button_message.clear();
+    }
+    trackItem(layout, "capture_button");
+    ImGui::SameLine();
+    ImGui::BeginDisabled(cfg.trigger_button.empty());
+    if (ImGui::Button("Clear##button")) {
+        cfg.trigger_button.clear();
+        state.button_message = "Controller button disabled";
+    }
+    ImGui::EndDisabled();
+    ImGui::EndDisabled();
+    trackItem(layout, "clear_button");
+    if (waiting) {
+        const char* spinner[] = {"|", "/", "-", "\\"};
+        int frame = static_cast<int>(ImGui::GetTime() * 8.0f) % 4;
+        ImGui::TextDisabled("Press and release a button or chord on any controller... %s", spinner[frame]);
+    } else {
+        statusLine(state.button_message);
+    }
+}
+
+static void drawTriggersTab(Config& cfg, TriggerState& state, SettingsLayout& layout) {
+    drawKeyboardTrigger(cfg, state, layout);
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+
+    drawControllerTrigger(cfg, state, layout);
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+
+    const char* modes[] = {"hold", "toggle"};
+    int mode_idx = cfg.trigger_mode == "toggle" ? 1 : 0;
+    ImGui::Text("Mode");
+    ImGui::TextDisabled("Hold: release to stop. Toggle: press again to stop.");
+    ImGui::SetNextItemWidth(260.0f);
+    if (combo("##trigger_mode", &mode_idx, modes, 2))
+        cfg.trigger_mode = modes[mode_idx];
+    trackItem(layout, "trigger_mode");
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    drawPedals(cfg, layout);
+}
+
+// Consumes key presses while the Triggers page records a shortcut, so ImGui never sees them.
+static bool handleKeyCapture(TriggerState& state, Config& cfg, const SDL_Event& event) {
+    if (!state.capturing_key) return false;
+    if (event.type == SDL_KEYUP) return true;
+    if (event.type != SDL_KEYDOWN) return false;
+    SDL_Scancode key = event.key.keysym.scancode;
+    Uint16 mod = event.key.keysym.mod;
+    if (key == SDL_SCANCODE_ESCAPE && modifierPrefix(mod).empty()) {
+        state.capturing_key = false;
+        state.key_message.clear();
+        return true;
+    }
+    if (key >= SDL_SCANCODE_LCTRL && key <= SDL_SCANCODE_RGUI) return true;
+    std::string combo = keyComboFromScancode(key, mod);
+    if (combo.empty()) {
+        state.key_message = std::string("Whisker can't use ") + SDL_GetScancodeName(key) +
+                            " as a trigger, try another key. Esc cancels";
+        return true;
+    }
+    cfg.trigger_key = combo;
+    state.capturing_key = false;
+    state.key_message.clear();
+    return true;
 }
 
 static void drawHistoryTab(std::vector<HistoryEntry>& entries, bool& needs_reload) {
@@ -881,7 +1130,8 @@ struct SettingsUi {
     bool scanned_done = false;
     std::vector<HistoryEntry> history_entries;
     bool history_needs_reload = false;
-    int active_tab = 0;
+    TriggerState triggers;
+    SettingsTab active_tab = SettingsTab::Audio;
     bool running = true;
     bool saved = false;
     SettingsLayout layout;
@@ -933,6 +1183,8 @@ static void loadUi(SettingsUi& ui, const std::string& config_path, std::vector<A
 static void drawFrame(SettingsUi& ui) {
     ImGuiIO& io = ImGui::GetIO();
     ImGui::NewFrame();
+    ui.layout.items.clear();
+    ui.layout.hovered.clear();
 
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(io.DisplaySize);
@@ -948,15 +1200,15 @@ static void drawFrame(SettingsUi& ui) {
     ImGui::BeginChild("sidebar", ImVec2(sidebar_w, -bottom_h), ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar);
     ImGui::Spacing();
 
-    const char* tabs[] = {"Audio", "Pedals", "History"};
-    for (int i = 0; i < 3; ++i) {
-        bool selected = (ui.active_tab == i);
+    const char* tabs[] = {"Audio", "Model", "Triggers", "History"};
+    for (int i = 0; i < 4; ++i) {
+        bool selected = (ui.active_tab == static_cast<SettingsTab>(i));
         if (selected) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.00f, 0.50f, 0.80f, 0.60f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.00f, 0.55f, 0.85f, 0.70f));
         }
         if (ImGui::Button(tabs[i], ImVec2(sidebar_w - 2 * ImGui::GetStyle().WindowPadding.x, 36)))
-            ui.active_tab = i;
+            ui.active_tab = static_cast<SettingsTab>(i);
         if (selected)
             ImGui::PopStyleColor(2);
     }
@@ -971,9 +1223,10 @@ static void drawFrame(SettingsUi& ui) {
                          ImGui::GetWindowPos().y + ImGui::GetWindowSize().y};
 
     switch (ui.active_tab) {
-    case 0: drawAudioTab(ui.cfg, ui.sources, ui.selected_source, ui.layout); break;
-    case 1: drawPedalsTab(ui.cfg, ui.model_states, ui.scanned_models, ui.scanned_done); break;
-    case 2:
+    case SettingsTab::Audio: drawAudioTab(ui.cfg, ui.sources, ui.selected_source, ui.layout); break;
+    case SettingsTab::Model: drawModelSection(ui.cfg, ui.model_states, ui.scanned_models, ui.scanned_done); break;
+    case SettingsTab::Triggers: drawTriggersTab(ui.cfg, ui.triggers, ui.layout); break;
+    case SettingsTab::History:
         if (ui.history_needs_reload) {
             ui.history_entries = loadHistoryEntries();
             ui.history_needs_reload = false;
@@ -1022,7 +1275,7 @@ static void presentFrame(SDL_Renderer* renderer) {
 
 SettingsLayout settingsRenderOffscreen(SDL_Renderer* renderer, const std::string& config_path,
                                        float width, float height, float framebuffer_scale,
-                                       float mouse_x, float mouse_y, int frames) {
+                                       float mouse_x, float mouse_y, int frames, SettingsTab tab) {
     setupImGui();
     ImGui_ImplSDLRenderer2_Init(renderer);
     ImGuiIO& io = ImGui::GetIO();
@@ -1031,6 +1284,7 @@ SettingsLayout settingsRenderOffscreen(SDL_Renderer* renderer, const std::string
 
     SettingsUi ui;
     loadUi(ui, config_path, {});
+    ui.active_tab = tab;
     for (int i = 0; i < frames; ++i) {
         io.AddMousePosEvent(mouse_x, mouse_y);
         ImGui_ImplSDLRenderer2_NewFrame();
@@ -1089,7 +1343,8 @@ int settingsRun(const std::string& config_path) {
     while (ui.running) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
-            ImGui_ImplSDL2_ProcessEvent(&event);
+            if (!handleKeyCapture(ui.triggers, ui.cfg, event))
+                ImGui_ImplSDL2_ProcessEvent(&event);
             if (event.type == SDL_QUIT) ui.running = false;
             if (event.type == SDL_WINDOWEVENT &&
                 event.window.event == SDL_WINDOWEVENT_CLOSE) ui.running = false;
@@ -1103,6 +1358,7 @@ int settingsRun(const std::string& config_path) {
     }
 
     g_mic_monitor.stop();
+    ui.triggers.button.stop();
 
     ImGui_ImplSDLRenderer2_Shutdown();
     ImGui_ImplSDL2_Shutdown();

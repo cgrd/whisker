@@ -28,6 +28,32 @@ static SDL_Color pixelAt(SDL_Surface* surface, float x, float y) {
     return c;
 }
 
+static const char* const kTriggerItems[] = {
+    "shortcut_value", "record_shortcut", "clear_shortcut", "button_value", "capture_button",
+    "clear_button", "trigger_mode", "left_pedal", "center_pedal", "right_pedal",
+};
+
+// Every item on the Triggers page must sit in the content area, apart from the others, and be
+// the item ImGui reports as hovered when the mouse is at its center.
+static void checkTriggersPage(SDL_Renderer* renderer, const std::string& config, float scale) {
+    SettingsLayout probe =
+        settingsRenderOffscreen(renderer, config, kWidth, kHeight, scale, -1, -1, 2, SettingsTab::Triggers);
+    for (const char* name : kTriggerItems) {
+        auto it = probe.items.find(name);
+        CHECK(it != probe.items.end());
+        if (it == probe.items.end()) continue;
+        const SettingsRect& r = it->second;
+        std::printf("%s %.0f,%.0f %.0f,%.0f\n", name, r.x0, r.y0, r.x1, r.y1);
+        CHECK(inside(r, probe.content));
+
+        float x = (r.x0 + r.x1) / 2;
+        float y = (r.y0 + r.y1) / 2;
+        SettingsLayout hover =
+            settingsRenderOffscreen(renderer, config, kWidth, kHeight, scale, x, y, 3, SettingsTab::Triggers);
+        CHECK_EQ(hover.hovered, std::string(name));
+    }
+}
+
 static void checkScale(const std::string& config, float scale) {
     std::printf("framebuffer scale %.2f\n", scale);
     SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(
@@ -48,7 +74,6 @@ static void checkScale(const std::string& config, float scale) {
     CHECK(inside(layout.content, display));
     CHECK(layout.content.x1 > kWidth - 32);
     CHECK(inside(layout.overlay_checkbox, layout.content));
-    CHECK(inside(layout.trigger_input, layout.content));
     CHECK(inside(layout.save_button, display));
     CHECK(layout.save_hovered);
 
@@ -64,6 +89,8 @@ static void checkScale(const std::string& config, float scale) {
     std::printf("checkbox pixel %d,%d,%d next to it %d,%d,%d\n", frame.r, frame.g, frame.b,
                 child_bg.r, child_bg.g, child_bg.b);
     CHECK(frame.r != child_bg.r || frame.g != child_bg.g || frame.b != child_bg.b);
+
+    checkTriggersPage(renderer, config, scale);
 
     SDL_DestroyRenderer(renderer);
     SDL_FreeSurface(surface);
