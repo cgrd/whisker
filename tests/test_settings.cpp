@@ -91,6 +91,15 @@ static void checkScale(const std::string& config, float scale) {
                 child_bg.r, child_bg.g, child_bg.b);
     CHECK(frame.r != child_bg.r || frame.g != child_bg.g || frame.b != child_bg.b);
 
+    // The selected page's sidebar button must stand out from the others.
+    const SettingsRect& audio_tab = layout.items["tab_Audio"];
+    const SettingsRect& model_tab = layout.items["tab_Model"];
+    SDL_Color selected_tab = pixelAt(surface, (audio_tab.x0 + 6) * scale, (audio_tab.y0 + audio_tab.y1) / 2 * scale);
+    SDL_Color other_tab = pixelAt(surface, (model_tab.x0 + 6) * scale, (model_tab.y0 + model_tab.y1) / 2 * scale);
+    std::printf("selected tab %d,%d,%d other %d,%d,%d\n", selected_tab.r, selected_tab.g, selected_tab.b,
+                other_tab.r, other_tab.g, other_tab.b);
+    CHECK(selected_tab.b > other_tab.b + 40);
+
     // The model links on the Model page are clickable at every scale.
     SettingsLayout models = settingsRenderOffscreen(renderer, config, kWidth, kHeight, scale, -1, -1, 2, SettingsTab::Model);
     float link_x = (models.model_link.x0 + models.model_link.x1) / 2;
