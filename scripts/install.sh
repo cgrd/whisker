@@ -11,6 +11,8 @@
 #   WHISKER_SKIP_SYSTEMD  set to 1 to skip systemd and udev steps
 #   WHISKER_SKIP_MODEL    set to 1 to skip the model download
 set -Eeuo pipefail
+# Files go to root-owned and other-user readable places (Decky runs as deck), so never inherit a strict umask
+umask 022
 
 RELEASE_URL="${WHISKER_RELEASE_URL:-https://github.com/cgrd/whisker/releases/latest/download}"
 SKIP_SYSTEMD="${WHISKER_SKIP_SYSTEMD:-0}"
@@ -135,6 +137,7 @@ Icon=audio-input-microphone
 Terminal=false
 Categories=Utility;Audio;
 EOF
+    chmod 644 "$MENU_ENTRY"
 }
 
 configured_model() {
@@ -164,6 +167,7 @@ install_decky_plugin() {
     say "(On a Steam Deck, set one first with 'passwd' if you never have.)"
     as_root sh -c "rm -rf '$DECKY_PLUGINS/Whisker' \
         && python3 -m zipfile -e '$zip' '$DECKY_PLUGINS' \
+        && chmod -R u=rwX,go=rX '$DECKY_PLUGINS/Whisker' \
         && (systemctl restart plugin_loader 2>/dev/null || true)" && return 0
     warn "the Decky plugin was NOT installed or updated, the old version may still be in place"
     retry_hint

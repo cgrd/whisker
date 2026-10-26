@@ -38,6 +38,16 @@ bash scripts/install.sh --uninstall
 bash scripts/install.sh --uninstall --purge
 [ ! -e "$CONFIG" ] || fail "--purge kept the config"
 
+# a strict caller umask must not leak into what the installer creates (Decky reads the plugin as another user)
+mode_of() { stat -c %a "$1"; }
+(umask 077 && bash scripts/install.sh) || fail "install under umask 077 failed"
+[ "$(mode_of "$APPIMAGE")" = 755 ] || fail "AppImage mode is $(mode_of "$APPIMAGE") under umask 077"
+[ "$(mode_of "$HOME/.local/share/applications/whisker.desktop")" = 644 ] || fail "menu entry mode wrong under umask 077"
+[ "$(mode_of "$PLUGIN")" = 755 ] || fail "plugin dir mode is $(mode_of "$PLUGIN") under umask 077"
+bad=$(find "$PLUGIN" \( -type d ! -perm 755 \) -o \( -type f ! -perm -644 \) -o \( -type f -perm /022 \))
+[ -z "$bad" ] || fail "plugin files not world-readable under umask 077: $bad"
+bash scripts/install.sh --uninstall --purge
+
 # sudo fails and the user is not root, like an SSH session without a TTY on a Deck
 fakebin=$(mktemp -d)
 trap 'rm -rf "$fakebin"' EXIT
