@@ -23,6 +23,7 @@ PassEnvironment=WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
 [Install]
 WantedBy=default.target
 EOF
+chmod 644 "$HOME/.config/systemd/user/whisker.service"
 
 systemctl --user daemon-reload
 systemctl --user enable whisker
