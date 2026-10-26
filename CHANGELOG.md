@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.2.0](https://github.com/cgrd/whisker/compare/v1.1.1...v1.2.0) (2026-10-26)
+
+
+### Features
+
+* **models:** label models by precision and size from one shared table ([#29](https://github.com/cgrd/whisker/issues/29)) ([b4ca4ca](https://github.com/cgrd/whisker/commit/b4ca4ca9134302de254215afc986397a8b83efea))
+* **models:** let the user pick the speech model, never download one by default ([#30](https://github.com/cgrd/whisker/issues/30)) ([d358938](https://github.com/cgrd/whisker/commit/d358938a96fe6e99b5a0cb3889e1d9809c80d316))
+* **settings:** add a Triggers page with shortcut and button capture ([#28](https://github.com/cgrd/whisker/issues/28)) ([bfe797f](https://github.com/cgrd/whisker/commit/bfe797f08073e04495105c979fbb9f29fb50b908))
+
+
+### Bug Fixes
+
+* **install:** set explicit file modes instead of inheriting the caller's umask ([#24](https://github.com/cgrd/whisker/issues/24)) ([28b9382](https://github.com/cgrd/whisker/commit/28b93825557fb4c68a63191e8b69610f102a67d5))
+* **models:** pin model downloads to a commit and verify size and SHA-256 ([#31](https://github.com/cgrd/whisker/issues/31)) ([fe4a1ab](https://github.com/cgrd/whisker/commit/fe4a1ab72a11146a429c97c5d3e20b099cdbd03b))
+* **settings:** highlight the selected page in the sidebar ([#32](https://github.com/cgrd/whisker/issues/32)) ([1768c93](https://github.com/cgrd/whisker/commit/1768c936d42fa01140ce8100daa583f7bb90ed6a))
+
 ## [1.1.1](https://github.com/cgrd/whisker/compare/v1.1.0...v1.1.1) (2026-10-25)
 
 
