@@ -97,7 +97,6 @@ jobs:
       - name: Install, reinstall, uninstall
         env:
           WHISKER_SKIP_SYSTEMD: 1
-          WHISKER_SKIP_MODEL: 1
           APPIMAGE_EXTRACT_AND_RUN: 1
         # github.workspace is the host path; inside the container the checkout lives elsewhere
         run: WHISKER_RELEASE_URL="file://$PWD/dist" bash scripts/test-install.sh

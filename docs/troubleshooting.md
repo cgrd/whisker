@@ -18,7 +18,7 @@ journalctl --user -u whisker -b --no-pager | tail -50
 ## It records but types nothing
 
 * `below noise threshold (rms=0.000000)` in the journal means silence. The Deck's mic can sit at volume 0 or muted: check with `wpctl get-volume @DEFAULT_AUDIO_SOURCE@` and raise it in Steam's audio settings. Lower `noise_threshold` if you speak quietly.
-* `no model loaded` means the model file is missing. Rerun the install script or download a model in settings.
+* `No speech model yet` (in the journal and the overlay) means no model is picked or the file is gone. Pick one on the Model page in settings or in the Decky panel; Whisker loads it on the next trigger press. `could not load the speech model` means the file is there but broken: download it again.
 * `failed to create virtual keyboard` means no access to `/dev/uinput`. Most desktops grant it to the logged-in user; otherwise add a udev rule giving your user access.
 
 ## The overlay doesn't show

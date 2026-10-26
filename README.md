@@ -16,7 +16,9 @@ Open a terminal (on a Steam Deck: switch to Desktop Mode and open Konsole) and r
 curl -fsSL https://github.com/cgrd/whisker/releases/latest/download/install.sh | bash
 ```
 
-The script downloads the latest release, checks it against `SHA256SUMS`, installs the AppImage to `~/Applications`, sets up a background service, downloads the speech model (about 700 MB) and, if [Decky Loader](https://decky.xyz) is installed, adds the Whisker plugin to it. Run it again any time to update. Your settings are kept.
+The script downloads the latest release, checks it against `SHA256SUMS`, installs the AppImage to `~/Applications`, sets up a background service and, if [Decky Loader](https://decky.xyz) is installed, adds the Whisker plugin to it. Run it again any time to update. Your settings and models are kept.
+
+It doesn't download a speech model. You pick one (477 to 731 MB, see [Models](#models)): on a desktop the installer opens the settings window on the model list, and on a Steam Deck in Game Mode you pick it in the Whisker panel in Decky's Quick Access menu. Until then the service runs, and pressing a trigger shows "No speech model yet" in the overlay.
 
 It needs `curl` and `python3`, which SteamOS and most distros already have. Installing the Decky plugin asks for your sudo password because Decky's plugin folder belongs to root. On a Deck where you never set one, run `passwd` first.
 
@@ -97,11 +99,11 @@ The recording start and stop rumble goes to the controller you pressed. To add a
 
 ## Models
 
-Whisker uses NVIDIA Parakeet 0.6B (`parakeet-unified-en-0.6b`) in GGUF format, converted by the transcribe.cpp project and downloaded from [Hugging Face](https://huggingface.co/handy-computer/parakeet-unified-en-0.6b-gguf). All quantizations score about the same (about 1.6% word error rate on LibriSpeech), so pick by disk space in settings:
+Whisker uses NVIDIA Parakeet 0.6B (`parakeet-unified-en-0.6b`) in GGUF format, converted by the transcribe.cpp project and downloaded from [Hugging Face](https://huggingface.co/handy-computer/parakeet-unified-en-0.6b-gguf). All quantizations score about the same (about 1.6% word error rate on LibriSpeech). Nothing is downloaded until you pick one in settings, in the Decky panel or with `./get-model.sh <model>`:
 
 | Model | Size | Notes |
 |-------|------|-------|
-| 8-bit (Q8_0) | 731 MB | Most accurate. The default. |
+| 8-bit (Q8_0) | 731 MB | Most accurate. Recommended. |
 | 6-bit (Q6_K) | 602 MB | Nearly as accurate as 8-bit, smaller. |
 | 5-bit (Q5_K_M) | 541 MB | Smaller again, accuracy close to 6-bit. |
 | 4-bit (Q4_K_M) | 477 MB | Smallest and fastest, slightly less accurate. |

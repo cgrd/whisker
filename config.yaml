@@ -1,4 +1,6 @@
-model: ~/.local/share/pedal-stt/models/parakeet-unified-en-0.6b-Q8_0.gguf
+# Speech model. Empty until you pick one in the settings window or the Decky panel,
+# e.g. ~/.local/share/pedal-stt/models/parakeet-unified-en-0.6b-Q8_0.gguf
+model: ""
 backend: vulkan
 
 # Save last N recordings as FLAC + text in ~/.local/share/pedal-stt/history/

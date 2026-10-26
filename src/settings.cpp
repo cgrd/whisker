@@ -271,10 +271,23 @@ static SettingsRect itemRect() {
     return {min.x, min.y, max.x, max.y};
 }
 
+static bool hasUsableModel(const Config& cfg) {
+    return !cfg.model_path.empty() && fileExists(cfg.model_path);
+}
+
 static void drawModelSection(Config& cfg, std::vector<ModelState>& model_states,
                               std::vector<ScannedModel>& scanned, bool& scanned_done, SettingsLayout& layout) {
     ImGui::Text("Model");
     ImGui::Spacing();
+
+    if (!hasUsableModel(cfg)) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.35f, 1.0f));
+        ImGui::TextWrapped("Pick a speech model to start dictating. Nothing is downloaded until you click "
+                           "Download on one of them.");
+        ImGui::PopStyleColor();
+        layout.model_prompt = itemRect();
+        ImGui::Spacing();
+    }
 
     if (ImGui::BeginTable("##models", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH)) {
         ImGui::TableSetupColumn("Model", ImGuiTableColumnFlags_WidthStretch);
@@ -296,6 +309,10 @@ static void drawModelSection(Config& cfg, std::vector<ModelState>& model_states,
             const KnownModel& model = knownModels()[i];
             ImGui::TableNextColumn();
             ImGui::Text("%s", modelLabel(model).c_str());
+            if (modelIsRecommended(model)) {
+                ImGui::SameLine();
+                ImGui::TextColored(ImVec4(0.3f, 0.85f, 0.4f, 1.0f), "Recommended");
+            }
             ImGui::TextDisabled("%s", model.note.c_str());
 
             ImGui::TableNextColumn();
@@ -341,6 +358,7 @@ static void drawModelSection(Config& cfg, std::vector<ModelState>& model_states,
     }
 
     ImGui::TextDisabled("Same NVIDIA model at different precisions. Fewer bits: smaller and faster.");
+    ImGui::TextDisabled("%s", modelRecommendedReason().c_str());
     ImGui::TextLinkOpenURL("Model files on Hugging Face", modelRepoUrl().c_str());
     layout.model_link = itemRect();
     layout.model_link_hovered = ImGui::IsItemHovered();
@@ -1152,14 +1170,8 @@ static void loadUi(SettingsUi& ui, const std::string& config_path, std::vector<A
         ui.model_states[i].local_path = findModelPath(knownModels()[i].file.c_str());
         ui.model_states[i].downloaded = !ui.model_states[i].local_path.empty();
     }
-    if (ui.cfg.model_path.empty() || !fileExists(ui.cfg.model_path)) {
-        for (int i = 0; i < static_cast<int>(knownModels().size()); ++i) {
-            if (ui.model_states[i].downloaded) {
-                ui.cfg.model_path = ui.model_states[i].local_path;
-                break;
-            }
-        }
-    }
+    // No model yet: open on the model list and let the user pick one; nothing is preselected
+    if (!hasUsableModel(ui.cfg)) ui.active_tab = SettingsTab::Model;
     ui.history_entries = loadHistoryEntries();
 }
 
@@ -1258,7 +1270,7 @@ static void presentFrame(SDL_Renderer* renderer) {
 
 SettingsLayout settingsRenderOffscreen(SDL_Renderer* renderer, const std::string& config_path,
                                        float width, float height, float framebuffer_scale,
-                                       float mouse_x, float mouse_y, int frames, SettingsTab tab) {
+                                       float mouse_x, float mouse_y, int frames, std::optional<SettingsTab> tab) {
     setupImGui();
     ImGui_ImplSDLRenderer2_Init(renderer);
     ImGuiIO& io = ImGui::GetIO();
@@ -1267,13 +1279,14 @@ SettingsLayout settingsRenderOffscreen(SDL_Renderer* renderer, const std::string
 
     SettingsUi ui;
     loadUi(ui, config_path, {});
-    ui.active_tab = tab;
+    if (tab) ui.active_tab = *tab;
     for (int i = 0; i < frames; ++i) {
         io.AddMousePosEvent(mouse_x, mouse_y);
         ImGui_ImplSDLRenderer2_NewFrame();
         drawFrame(ui);
         presentFrame(renderer);
     }
+    ui.layout.active_tab = ui.active_tab;
     ImTextureData* atlas = io.Fonts->TexData;
     ui.layout.font_texture_ready = atlas && atlas->Status == ImTextureStatus_OK &&
                                    atlas->TexID != ImTextureID_Invalid;

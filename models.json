@@ -2,13 +2,15 @@
   "name": "Parakeet 0.6B",
   "repo": "https://huggingface.co/handy-computer/parakeet-unified-en-0.6b-gguf",
   "original": "https://huggingface.co/nvidia/parakeet-unified-en-0.6b",
+  "recommended": "parakeet-unified-en-0.6b-Q8_0.gguf",
+  "recommended_reason": "Recommended: the most accurate, and fast enough on any GPU and on a Steam Deck CPU (about 0.25 s per transcription).",
   "models": [
     {
       "file": "parakeet-unified-en-0.6b-Q8_0.gguf",
       "quant": "Q8_0",
       "bits": 8,
       "size": 731357568,
-      "note": "Most accurate. The default."
+      "note": "Most accurate."
     },
     {
       "file": "parakeet-unified-en-0.6b-Q6_K.gguf",

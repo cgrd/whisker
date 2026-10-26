@@ -69,7 +69,6 @@ static int pedalIndex(const std::string& name) {
 
 static Config defaultConfig() {
     Config cfg;
-    cfg.model_path = expandTilde("~/.local/share/pedal-stt/models/parakeet-unified-en-0.6b-Q8_0.gguf");
     cfg.pedals[1].action = PedalAction::Transcribe;
     cfg.trigger_key = "ctrl+shift+space";
     cfg.trigger_button = "L5";
@@ -234,7 +233,8 @@ void saveConfig(const Config& cfg, const std::string& path) {
 
     std::ofstream f(expanded);
 
-    f << "model: " << collapseTilde(cfg.model_path) << "\n";
+    if (!cfg.model_path.empty())
+        f << "model: " << collapseTilde(cfg.model_path) << "\n";
     f << "backend: " << cfg.backend << "\n";
     if (!cfg.audio_device.empty())
         f << "audio_device: " << cfg.audio_device << "\n";

@@ -20,6 +20,16 @@ static void testMissingFileGivesDefaults() {
     CHECK_EQ(cfg.trigger_button, "L5");
     CHECK(cfg.pedals[1].action == PedalAction::Transcribe);
     CHECK_EQ(cfg.submit_key, "none");
+    // The user picks the model; a fresh config must not point at one
+    CHECK_EQ(cfg.model_path, "");
+}
+
+static void testExistingModelIsKept() {
+    Config cfg = loadConfig(writeFile("existing.yaml", "model: /opt/models/parakeet-unified-en-0.6b-Q8_0.gguf\n"));
+    CHECK_EQ(cfg.model_path, "/opt/models/parakeet-unified-en-0.6b-Q8_0.gguf");
+    std::string saved = g_dir + "/saved.yaml";
+    saveConfig(Config{}, saved);
+    CHECK_EQ(loadConfig(saved).model_path, "");
 }
 
 static void testParseTopLevel() {
@@ -163,6 +173,7 @@ int main() {
     std::string tmpl = (std::filesystem::temp_directory_path() / "whisker-test-XXXXXX").string();
     g_dir = mkdtemp(tmpl.data());
     testMissingFileGivesDefaults();
+    testExistingModelIsKept();
     testParseTopLevel();
     testParsePedals();
     testSaveLoadRoundTrip();

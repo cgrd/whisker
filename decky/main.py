@@ -35,9 +35,15 @@ def model_url(model: dict) -> str:
     return f"{MODEL_TABLE['repo']}/resolve/main/{model['file']}"
 
 
-DEFAULT_MODEL = MODEL_TABLE["models"][0]
-DEFAULT_MODEL_NAME = DEFAULT_MODEL["file"]
-DEFAULT_MODEL_URL = model_url(DEFAULT_MODEL)
+def known_model(file: str) -> dict:
+    for model in MODEL_TABLE["models"]:
+        if model["file"] == file:
+            return model
+    raise ValueError(f"unknown model: {file!r}")
+
+
+def _part_path(file: str) -> Path:
+    return MODELS_DIR / f".{file}.part"
 
 
 PEDAL_NAMES = ("left", "center", "right")
@@ -228,6 +234,8 @@ async def _run(cmd: list[str]) -> tuple[int, str]:
 
 
 class Plugin:
+    _download_error = ""
+
     async def get_status(self) -> dict:
         rc_active, _ = await _run(["systemctl", "--user", "is-active", "whisker"])
         rc_enabled, _ = await _run(["systemctl", "--user", "is-enabled", "whisker"])
@@ -286,50 +294,54 @@ class Plugin:
         return {
             "repo": MODEL_TABLE["repo"],
             "original": MODEL_TABLE["original"],
+            "recommended_reason": MODEL_TABLE["recommended_reason"],
             "models": [
-                {"file": m["file"], "label": model_label(m), "note": m["note"]}
+                {
+                    "file": m["file"],
+                    "label": model_label(m),
+                    "note": m["note"],
+                    "recommended": m["file"] == MODEL_TABLE["recommended"],
+                }
                 for m in MODEL_TABLE["models"]
             ],
         }
 
     async def get_model_status(self) -> dict:
-        dest = MODELS_DIR / DEFAULT_MODEL_NAME
-        tmp = MODELS_DIR / f".{DEFAULT_MODEL_NAME}.part"
-        downloading = tmp.exists()
-        downloaded = dest.exists()
-        size_mb = 0
-        progress_mb = 0
-        if downloaded:
-            size_mb = megabytes(dest.stat().st_size)
-        if downloading:
-            progress_mb = megabytes(tmp.stat().st_size)
+        configured = _read_config().get("model")
+        configured = os.path.expanduser(configured) if isinstance(configured, str) else ""
+        downloading = next((m for m in MODEL_TABLE["models"] if _part_path(m["file"]).exists()), None)
         return {
-            "downloaded": downloaded,
-            "downloading": downloading,
-            "path": str(dest),
-            "size_mb": size_mb,
-            "progress_mb": progress_mb,
-            "total_mb": megabytes(DEFAULT_MODEL["size"]),
+            "configured": configured,
+            "configured_exists": bool(configured) and Path(configured).is_file(),
+            "downloaded": [m["file"] for m in MODEL_TABLE["models"] if (MODELS_DIR / m["file"]).is_file()],
+            "downloading": downloading["file"] if downloading else "",
+            "progress_mb": megabytes(_part_path(downloading["file"]).stat().st_size) if downloading else 0,
+            "total_mb": megabytes(downloading["size"]) if downloading else 0,
+            "error": self._download_error,
         }
 
-    async def download_model(self) -> bool:
-        MODELS_DIR.mkdir(parents=True, exist_ok=True)
-        dest = MODELS_DIR / DEFAULT_MODEL_NAME
-        tmp = MODELS_DIR / f".{DEFAULT_MODEL_NAME}.part"
-        if dest.exists():
+    async def download_model(self, file: str) -> bool:
+        """Downloads the model the user picked. Nothing calls this without a click on a model."""
+        model = known_model(file)
+        dest = MODELS_DIR / model["file"]
+        self._download_error = ""
+        if dest.is_file():
+            await self.set_option("model", str(dest))
             return True
-        asyncio.create_task(self._do_download(dest, tmp))
+        MODELS_DIR.mkdir(parents=True, exist_ok=True)
+        asyncio.create_task(self._do_download(model, dest, _part_path(model["file"])))
         return True
 
-    async def _do_download(self, dest: Path, tmp: Path) -> None:
+    async def _do_download(self, model: dict, dest: Path, tmp: Path) -> None:
         proc = await asyncio.create_subprocess_exec(
-            "curl", "-fSL", "-o", str(tmp), "-C", "-", DEFAULT_MODEL_URL,
+            "curl", "-fSL", "-o", str(tmp), "-C", "-", model_url(model),
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
             env=_user_env(),
         )
         _, stderr = await proc.communicate()
         if proc.returncode != 0:
+            self._download_error = "Download failed, check the connection and try again"
             decky.logger.error(f"Model download failed: {stderr.decode()}")
             return
         tmp.rename(dest)
@@ -337,10 +349,11 @@ class Plugin:
         decky.logger.info("Model download complete")
 
     async def cancel_download(self) -> None:
-        tmp = MODELS_DIR / f".{DEFAULT_MODEL_NAME}.part"
-        await _run(["pkill", "-f", f"curl.*{DEFAULT_MODEL_NAME}"])
-        if tmp.exists():
-            tmp.unlink()
+        for model in MODEL_TABLE["models"]:
+            tmp = _part_path(model["file"])
+            if tmp.exists():
+                await _run(["pkill", "-f", f"curl.*{model['file']}"])
+                tmp.unlink(missing_ok=True)
 
     async def start_recording(self) -> bool:
         return await self._send_command("start")

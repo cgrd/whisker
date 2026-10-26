@@ -35,5 +35,7 @@ std::string modelLabel(const KnownModel& model) {
            std::to_string(modelSizeMb(model)) + " MB";
 }
 
+bool modelIsRecommended(const KnownModel& model) { return model.file == kModelRecommended; }
+std::string modelRecommendedReason() { return kModelRecommendedReason; }
 std::string modelRepoUrl() { return kModelRepo; }
 std::string modelOriginalUrl() { return kModelOriginal; }

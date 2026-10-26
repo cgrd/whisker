@@ -169,6 +169,8 @@ endfunction()
 model_string(_name "${_models}" name)
 model_string(_repo "${_models}" repo)
 model_string(_original "${_models}" original)
+model_string(_recommended "${_models}" recommended)
+model_string(_recommended_reason "${_models}" recommended_reason)
 set(_rows "")
 string(JSON _count LENGTH "${_models}" models)
 math(EXPR _last "${_count} - 1")
@@ -186,6 +188,8 @@ file(CONFIGURE OUTPUT ${CMAKE_BINARY_DIR}/models_data.h CONTENT
 static const char* const kModelName = \"${_name}\";
 static const char* const kModelRepo = \"${_repo}\";
 static const char* const kModelOriginal = \"${_original}\";
+static const char* const kModelRecommended = \"${_recommended}\";
+static const char* const kModelRecommendedReason = \"${_recommended_reason}\";
 static const ModelRow kModelRows[] = {
 ${_rows}};
 ")
