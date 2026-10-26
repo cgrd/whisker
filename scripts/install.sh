@@ -9,22 +9,18 @@
 #   WHISKER_RELEASE_URL   where to download release assets from; for testing local builds use
 #                         file:///path/to/dist (any curl URL works)
 #   WHISKER_SKIP_SYSTEMD  set to 1 to skip systemd and udev steps
-#   WHISKER_SKIP_MODEL    set to 1 to skip the model download
 set -Eeuo pipefail
 # Files go to root-owned and other-user readable places (Decky runs as deck), so never inherit a strict umask
 umask 022
 
 RELEASE_URL="${WHISKER_RELEASE_URL:-https://github.com/cgrd/whisker/releases/latest/download}"
 SKIP_SYSTEMD="${WHISKER_SKIP_SYSTEMD:-0}"
-SKIP_MODEL="${WHISKER_SKIP_MODEL:-0}"
 
 APP_DIR="$HOME/Applications"
 APPIMAGE="$APP_DIR/Whisker-x86_64.AppImage"
 CONFIG_DIR="$HOME/.config/pedal-stt"
 DATA_DIR="$HOME/.local/share/pedal-stt"
 MODELS_DIR="$DATA_DIR/models"
-MODEL_NAME="parakeet-unified-en-0.6b-Q8_0.gguf"
-MODEL_URL="https://huggingface.co/handy-computer/parakeet-unified-en-0.6b-gguf/resolve/main/$MODEL_NAME"
 MENU_ENTRY="$HOME/.local/share/applications/whisker.desktop"
 DECKY_PLUGINS="$HOME/homebrew/plugins"
 UDEV_RULES=(/etc/udev/rules.d/70-whisker.rules /etc/udev/rules.d/70-pedal-stt.rules)
@@ -146,19 +142,21 @@ configured_model() {
     echo "${path/#\~/$HOME}"
 }
 
-download_model() {
-    [ "$SKIP_MODEL" = 1 ] && return 0
+has_model() {
     local configured
     configured=$(configured_model)
-    if compgen -G "$MODELS_DIR/*.gguf" >/dev/null || { [ -n "$configured" ] && [ -f "$configured" ]; }; then
-        say "Speech model already present"
-        return 0
-    fi
-    say "Downloading the speech model (about 700 MB)"
-    mkdir -p "$MODELS_DIR"
-    curl -fL --progress-bar -o "$MODELS_DIR/.$MODEL_NAME.part" "$MODEL_URL" \
-        || die "model download failed; run this script again to retry"
-    mv "$MODELS_DIR/.$MODEL_NAME.part" "$MODELS_DIR/$MODEL_NAME"
+    compgen -G "$MODELS_DIR/*.gguf" >/dev/null || { [ -n "$configured" ] && [ -f "$configured" ]; }
+}
+
+has_graphical_session() {
+    [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]
+}
+
+# The speech model is the user's choice, so the installer never downloads one. It opens the
+# settings window on the model list instead, where nothing downloads until the user picks a model.
+open_model_chooser() {
+    has_graphical_session || return 1
+    setsid -f "$APPIMAGE" --settings >/dev/null 2>&1 </dev/null
 }
 
 install_decky_plugin() {
@@ -209,8 +207,6 @@ do_install() {
     "$APPIMAGE" --version >/dev/null || die "the AppImage does not run on this system"
     install_menu_entry
 
-    download_model
-
     if [ "$SKIP_SYSTEMD" != 1 ]; then
         say "Setting up the background service"
         "$APPIMAGE" --install-service
@@ -224,8 +220,24 @@ do_install() {
         install_decky_plugin "$tmp/Whisker-decky.zip" || decky_failed=1
     fi
 
+    local chooser_opened=0
+    if ! has_model && open_model_chooser; then
+        chooser_opened=1
+    fi
+
     echo
     say "Whisker $("$APPIMAGE" --version | cut -d' ' -f2) is installed"
+    if ! has_model; then
+        echo "  * No speech model yet, and none was downloaded. Pick one before dictating:"
+        if [ "$chooser_opened" = 1 ]; then
+            echo "    the Whisker settings window just opened on the model list."
+        else
+            echo "    open Whisker settings from your app menu (or run $APPIMAGE --settings)."
+        fi
+        if has_decky; then
+            echo "    In Game Mode, pick it in the Whisker panel in Decky's Quick Access menu."
+        fi
+    fi
     if has_decky; then
         echo "  * Hold the L5 back button, speak, release. Your words are typed into the focused app."
         echo "  * Leave L5 unbound in each game's Steam Input layout, or pick another button."

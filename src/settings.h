@@ -2,6 +2,7 @@
 #pragma once
 
 #include <map>
+#include <optional>
 #include <string>
 
 struct SDL_Renderer;
@@ -10,9 +11,12 @@ struct SettingsRect {
     float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
 };
 
+enum class SettingsTab { Audio, Model, Triggers, History };
+
 struct SettingsLayout {
     SettingsRect content;
     SettingsRect overlay_checkbox;
+    SettingsRect model_prompt;
     SettingsRect model_link;
     bool model_link_hovered = false;
     SettingsRect save_button;
@@ -21,9 +25,8 @@ struct SettingsLayout {
     // Interactive items on the drawn page by name, and the one under the mouse.
     std::map<std::string, SettingsRect> items;
     std::string hovered;
+    SettingsTab active_tab = SettingsTab::Audio;
 };
-
-enum class SettingsTab { Audio, Model, Triggers, History };
 
 int settingsRun(const std::string& config_path);
 
@@ -32,4 +35,4 @@ int settingsRun(const std::string& config_path);
 SettingsLayout settingsRenderOffscreen(SDL_Renderer* renderer, const std::string& config_path,
                                        float width, float height, float framebuffer_scale,
                                        float mouse_x, float mouse_y, int frames,
-                                       SettingsTab tab = SettingsTab::Audio);
+                                       std::optional<SettingsTab> tab = std::nullopt);

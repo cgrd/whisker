@@ -171,11 +171,51 @@ def test_model_labels_come_from_the_shared_table():
     ]
     assert known["repo"] == "https://huggingface.co/handy-computer/parakeet-unified-en-0.6b-gguf"
     assert known["original"] == "https://huggingface.co/nvidia/parakeet-unified-en-0.6b"
-    assert main.DEFAULT_MODEL_NAME == "parakeet-unified-en-0.6b-Q8_0.gguf"
+    assert [m["recommended"] for m in known["models"]] == [True, False, False, False]
 
 
-def test_model_status_reports_decimal_megabytes(tmp_path, monkeypatch):
+@pytest.fixture
+def no_subprocess(monkeypatch):
+    async def forbidden(*args, **kwargs):
+        raise AssertionError(f"unexpected subprocess: {args}")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", forbidden)
+
+
+def test_fresh_start_downloads_nothing(tmp_path, monkeypatch, config_path, no_subprocess):
+    monkeypatch.setattr(main, "MODELS_DIR", tmp_path / "models")
+    plugin = main.Plugin()
+    status = asyncio.run(plugin.get_model_status())
+    asyncio.run(plugin.get_known_models())
+    asyncio.run(plugin.get_models())
+    assert status["configured"] == ""
+    assert not status["configured_exists"]
+    assert status["downloaded"] == []
+    assert status["downloading"] == ""
+    assert not (tmp_path / "models").exists()
+
+
+def test_download_requires_a_known_model(tmp_path, monkeypatch, config_path, no_subprocess):
     monkeypatch.setattr(main, "MODELS_DIR", tmp_path)
+    with pytest.raises(ValueError):
+        asyncio.run(main.Plugin().download_model("../evil.gguf"))
+
+
+def test_picking_a_downloaded_model_selects_it(tmp_path, monkeypatch, config_path, no_subprocess):
+    monkeypatch.setattr(main, "MODELS_DIR", tmp_path)
+    model = tmp_path / "parakeet-unified-en-0.6b-Q6_K.gguf"
+    model.write_bytes(b"gguf")
+    asyncio.run(main.Plugin().download_model(model.name))
     status = asyncio.run(main.Plugin().get_model_status())
+    assert status["configured"] == str(model)
+    assert status["configured_exists"]
+    assert status["downloaded"] == [model.name]
+
+
+def test_download_progress_reports_decimal_megabytes(tmp_path, monkeypatch, config_path):
+    monkeypatch.setattr(main, "MODELS_DIR", tmp_path)
+    (tmp_path / ".parakeet-unified-en-0.6b-Q8_0.gguf.part").write_bytes(b"x" * 2_000_000)
+    status = asyncio.run(main.Plugin().get_model_status())
+    assert status["downloading"] == "parakeet-unified-en-0.6b-Q8_0.gguf"
+    assert status["progress_mb"] == 2
     assert status["total_mb"] == 731
-    assert not status["downloaded"]

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <unistd.h>
 
@@ -63,11 +64,11 @@ static void checkScale(const std::string& config, float scale) {
     SDL_Renderer* renderer = SDL_CreateSoftwareRenderer(surface);
     CHECK(renderer != nullptr);
 
-    SettingsLayout probe = settingsRenderOffscreen(renderer, config, kWidth, kHeight, scale, -1, -1, 2);
+    SettingsLayout probe = settingsRenderOffscreen(renderer, config, kWidth, kHeight, scale, -1, -1, 2, SettingsTab::Audio);
     float save_x = (probe.save_button.x0 + probe.save_button.x1) / 2;
     float save_y = (probe.save_button.y0 + probe.save_button.y1) / 2;
 
-    SettingsLayout layout = settingsRenderOffscreen(renderer, config, kWidth, kHeight, scale, save_x, save_y, 3);
+    SettingsLayout layout = settingsRenderOffscreen(renderer, config, kWidth, kHeight, scale, save_x, save_y, 3, SettingsTab::Audio);
     SettingsRect display{0, 0, kWidth, kHeight};
 
     CHECK(layout.font_texture_ready);
@@ -102,6 +103,11 @@ static void checkScale(const std::string& config, float scale) {
 
     checkTriggersPage(renderer, config, scale);
 
+    // Without a model the window opens on the model list and asks the user to pick one.
+    SettingsLayout first_run = settingsRenderOffscreen(renderer, config, kWidth, kHeight, scale, -1, -1, 2);
+    CHECK(first_run.active_tab == SettingsTab::Model);
+    CHECK(inside(first_run.model_prompt, first_run.content));
+
     SDL_DestroyRenderer(renderer);
     SDL_FreeSurface(surface);
 }
@@ -113,6 +119,23 @@ int main() {
 
     for (float scale : {1.0f, 1.25f, 1.5f, 2.0f})
         checkScale(SAMPLE_CONFIG, scale);
+
+    // Opening settings with a fresh config downloads nothing and selects nothing.
+    fs::path models = home / ".local/share/pedal-stt/models";
+    CHECK(!fs::exists(models) || fs::is_empty(models));
+
+    // With a model configured it opens on the first page as before.
+    fs::create_directories(models);
+    fs::path model = models / "mine.gguf";
+    std::ofstream(model) << "gguf";
+    fs::path config = home / "config.yaml";
+    std::ofstream(config) << "model: " << model.string() << "\n";
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, 1200, 850, 32, SDL_PIXELFORMAT_ARGB8888);
+    SDL_Renderer* renderer = SDL_CreateSoftwareRenderer(surface);
+    SettingsLayout configured = settingsRenderOffscreen(renderer, config.string(), kWidth, kHeight, 1.0f, -1, -1, 2);
+    CHECK(configured.active_tab == SettingsTab::Audio);
+    SDL_DestroyRenderer(renderer);
+    SDL_FreeSurface(surface);
 
     fs::remove_all(home);
     return checkReport();

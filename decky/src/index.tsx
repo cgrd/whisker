@@ -19,12 +19,13 @@ type Config = Record<string, unknown>;
 type Status = { running: boolean; enabled: boolean };
 type AudioSource = { id: string; name: string };
 type ModelStatus = {
-    downloaded: boolean;
-    downloading: boolean;
-    path: string;
-    size_mb: number;
+    configured: string;
+    configured_exists: boolean;
+    downloaded: string[];
+    downloading: string;
     progress_mb: number;
     total_mb: number;
+    error: string;
 };
 type Diagnostics = {
     running: boolean;
@@ -33,8 +34,8 @@ type Diagnostics = {
     model_path: string;
     memory_mb: number;
 };
-type KnownModel = { file: string; label: string; note: string };
-type KnownModels = { repo: string; original: string; models: KnownModel[] };
+type KnownModel = { file: string; label: string; note: string; recommended: boolean };
+type KnownModels = { repo: string; original: string; recommended_reason: string; models: KnownModel[] };
 type Option = { data: string; label: string };
 type CaptureResult = { button?: string; device?: string; error?: string };
 type Value = string | number | boolean;
@@ -56,7 +57,7 @@ const getDiagnostics = callable<[], Diagnostics>("get_diagnostics");
 const getLastTranscription = callable<[], string>("get_last_transcription");
 const getKnownModels = callable<[], KnownModels>("get_known_models");
 const getModelStatus = callable<[], ModelStatus>("get_model_status");
-const downloadModel = callable<[], boolean>("download_model");
+const downloadModel = callable<[file: string], boolean>("download_model");
 const cancelDownload = callable<[], void>("cancel_download");
 const captureButton = callable<[], CaptureResult>("capture_button");
 
@@ -138,7 +139,6 @@ function WhiskerPanel() {
     const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
     const [lastTranscription, setLastTranscription] = useState("");
     const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
-    const [downloading, setDownloading] = useState(false);
     const [enabled, setEnabled] = useState(false);
     const [models, setModels] = useState<string[]>([]);
     const [knownModels, setKnownModels] = useState<KnownModels | null>(null);
@@ -173,15 +173,11 @@ function WhiskerPanel() {
         })();
         (async () => {
             const m = await getModels();
+            if (mountedRef.current) setModels(m);
+            const ms = await getModelStatus();
             if (!mountedRef.current) return;
-            setModels(m);
-            if (m.length === 0) {
-                const ms = await getModelStatus();
-                if (mountedRef.current) {
-                    setModelStatus(ms);
-                    if (ms.downloading) setDownloading(true);
-                }
-            }
+            setModelStatus(ms);
+            if (ms.downloading) pollDownload();
         })();
         const interval = setInterval(refreshStatus, 5000);
         return () => {
@@ -310,9 +306,7 @@ function WhiskerPanel() {
         setLogs(await getLogs(30));
     };
 
-    const handleDownloadModel = async () => {
-        setDownloading(true);
-        await downloadModel();
+    const pollDownload = () => {
         const pollId = setInterval(async () => {
             const ms = await getModelStatus();
             if (!mountedRef.current) {
@@ -320,24 +314,27 @@ function WhiskerPanel() {
                 return;
             }
             setModelStatus(ms);
-            if (ms.downloaded) {
-                clearInterval(pollId);
-                setDownloading(false);
-                const m = await getModels();
-                if (mountedRef.current) {
-                    setModels(m);
-                    setConfig((c) => ({ ...c, model: ms.path }));
-                }
-            } else if (!ms.downloading) {
-                clearInterval(pollId);
-                setDownloading(false);
-            }
-        }, 3000);
+            if (ms.downloading) return;
+            clearInterval(pollId);
+            const m = await getModels();
+            if (!mountedRef.current) return;
+            setModels(m);
+            setConfig((c) => ({ ...c, model: ms.configured }));
+        }, 2000);
+    };
+
+    // Downloads only the model the user clicked; there is no default
+    const handlePickModel = async (file: string) => {
+        await downloadModel(file);
+        const ms = await getModelStatus();
+        if (!mountedRef.current) return;
+        setModelStatus(ms);
+        if (ms.downloading) pollDownload();
+        else setConfig((c) => ({ ...c, model: ms.configured }));
     };
 
     const handleCancelDownload = async () => {
         await cancelDownload();
-        setDownloading(false);
         const ms = await getModelStatus();
         if (mountedRef.current) setModelStatus(ms);
     };
@@ -348,8 +345,20 @@ function WhiskerPanel() {
 
     const knownModel = (path: string) => knownModels?.models.find((k) => path.split("/").pop() === k.file);
     const modelOptions = models.map((m) => ({ data: m, label: knownModel(m)?.label ?? m.split("/").pop() ?? m }));
-    const defaultModel = knownModels?.models[0];
     const selectedModel = knownModel(get<string>("model"));
+    const hasModel = modelStatus?.configured_exists ?? true;
+    const downloadingModel = knownModels?.models.find((k) => k.file === modelStatus?.downloading);
+    const modelChoice = (m: KnownModel) => {
+        const downloaded = modelStatus?.downloaded.includes(m.file) ?? false;
+        if (hasModel && downloaded) return null;
+        const description = m.recommended ? `${m.note} ${knownModels?.recommended_reason ?? ""}` : m.note;
+        return <PanelSectionRow key={m.file}>
+            <ButtonItem label={m.recommended ? `${m.label} (recommended)` : m.label} description={description}
+                onClick={() => handlePickModel(m.file)} disabled={!!downloadingModel} layout="below">
+                {downloaded ? "Use This Model" : "Download"}
+            </ButtonItem>
+        </PanelSectionRow>;
+    };
     const link = (label: string, url: string) => row(
         <ButtonItem label={label} description={url.replace("https://", "")}
             onClick={() => Navigation.NavigateToExternalWeb(url)} layout="below" />);
@@ -376,23 +385,23 @@ function WhiskerPanel() {
                     </div>)}
             </PanelSection>
             <PanelSection title="Model">
-                {modelOptions.length > 0 ? dropdown("model", "Transcription Model", modelOptions,
-                    selectedModel?.note) : (
+                {!hasModel && row(<div style={{ padding: "8px", fontSize: "12px" }}>
+                    Pick a speech model to start dictating. Nothing downloads until you choose one.
+                </div>)}
+                {hasModel && modelOptions.length > 0 &&
+                    dropdown("model", "Transcription Model", modelOptions, selectedModel?.note)}
+                {downloadingModel ? (
                     <>
-                        {downloading ? (
-                            <>
-                                {row(<div style={{ padding: "8px", fontSize: "12px" }}>
-                                    {`Downloading... ${modelStatus ? modelStatus.progress_mb : 0}`
-                                        + ` / ${modelStatus ? modelStatus.total_mb : "?"} MB`}
-                                </div>)}
-                                {row(<ButtonItem label="Cancel Download" onClick={handleCancelDownload}
-                                    layout="below" />)}
-                            </>
-                        ) : row(<ButtonItem label="Download Model"
-                            description={defaultModel ? `${defaultModel.label}. ${defaultModel.note}` : ""}
-                            onClick={handleDownloadModel} layout="below" />)}
+                        {row(<div style={{ padding: "8px", fontSize: "12px" }}>
+                            {`Downloading ${downloadingModel.label}: ${modelStatus?.progress_mb ?? 0}`
+                                + ` / ${modelStatus?.total_mb ?? 0} MB`}
+                        </div>)}
+                        {row(<ButtonItem label="Cancel Download" onClick={handleCancelDownload} layout="below" />)}
                     </>
-                )}
+                ) : knownModels?.models.map(modelChoice)}
+                {modelStatus?.error && row(<div style={{ padding: "8px", fontSize: "12px", color: "#ff8080" }}>
+                    {modelStatus.error}
+                </div>)}
                 {knownModels && link("Model Files", knownModels.repo)}
                 {knownModels && link("Original NVIDIA Model", knownModels.original)}
             </PanelSection>

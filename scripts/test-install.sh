@@ -5,7 +5,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-export WHISKER_SKIP_SYSTEMD=1 WHISKER_SKIP_MODEL=1 APPIMAGE_EXTRACT_AND_RUN=1
+export WHISKER_SKIP_SYSTEMD=1 APPIMAGE_EXTRACT_AND_RUN=1
 : "${WHISKER_RELEASE_URL:?set WHISKER_RELEASE_URL, e.g. file://$PWD/dist}"
 
 APPIMAGE="$HOME/Applications/Whisker-x86_64.AppImage"
@@ -14,12 +14,24 @@ CONFIG="$HOME/.config/pedal-stt/config.yaml"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
+MODELS="$HOME/.local/share/pedal-stt/models"
+
+# Log every URL curl fetches, to prove the installer never downloads a speech model
+curl_log=$(mktemp)
+curlbin=$(mktemp -d)
+printf '#!/bin/sh\necho "$*" >> %s\nexec %s "$@"\n' "$curl_log" "$(command -v curl)" > "$curlbin/curl"
+chmod +x "$curlbin/curl"
+export PATH="$curlbin:$PATH"
+
 mkdir -p "$HOME/homebrew/plugins" "$(dirname "$CONFIG")"
 echo "backend: cpu" > "$CONFIG"
 
 out=$(bash scripts/install.sh 2>&1) || { echo "$out"; fail "install exited non-zero"; }
 echo "$out"
 grep -q "Whisker .* is installed" <<<"$out" || fail "install did not end with the installed message"
+grep -q "No speech model yet, and none was downloaded" <<<"$out" || fail "install did not ask to pick a model"
+grep -q "Decky's Quick Access menu" <<<"$out" || fail "install did not point Deck users to the Decky panel"
+[ -f "$PLUGIN/models.json" ] || fail "Decky plugin is missing models.json"
 [ -x "$APPIMAGE" ] || fail "AppImage not installed"
 "$APPIMAGE" --version | grep -q '^whisker ' || fail "installed AppImage does not run"
 [ -f "$PLUGIN/main.py" ] && [ -f "$PLUGIN/dist/index.js" ] || fail "Decky plugin not installed"
@@ -63,5 +75,16 @@ grep -q "Decky plugin was NOT installed" <<<"$out" || fail "failed Decky step pr
 grep -q "Whisker .* is installed" <<<"$out" || fail "failed Decky step skipped the summary"
 [ -x "$APPIMAGE" ] || fail "failed Decky step broke the AppImage install"
 [ ! -e "$PLUGIN" ] || fail "plugin installed despite failing sudo"
+
+! grep -qiE 'huggingface|\.gguf' "$curl_log" || fail "the installer downloaded a model: $(cat "$curl_log")"
+[ ! -d "$MODELS" ] || [ -z "$(ls -A "$MODELS")" ] || fail "the installer put files in $MODELS"
+
+# An existing model is kept and the installer doesn't ask again
+mkdir -p "$MODELS"
+echo gguf > "$MODELS/parakeet-unified-en-0.6b-Q8_0.gguf"
+out=$(bash scripts/install.sh 2>&1) || { echo "$out"; fail "install with a model exited non-zero"; }
+! grep -q "No speech model yet" <<<"$out" || fail "install asked for a model although one exists"
+[ -f "$MODELS/parakeet-unified-en-0.6b-Q8_0.gguf" ] || fail "install removed the existing model"
+rm -rf "$curl_log" "$curlbin"
 
 echo "install.sh checks passed"

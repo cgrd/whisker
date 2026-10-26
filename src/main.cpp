@@ -64,6 +64,34 @@ static void outputText(const std::string& text, OutputMode mode, VirtualKeyboard
 
 static int last_typed_len = 0;
 
+static const char* const kNoModelMessage = "No speech model yet: open Whisker settings to pick one";
+
+// Loads the configured model, retrying only when the path changes so a broken file isn't reloaded on
+// every trigger, and logging the missing model once instead of on every press.
+class ModelLoader {
+public:
+    bool load(SpeechToText& stt, const std::string& path, const std::string& backend) {
+        struct stat st;
+        if (path.empty() || stat(path.c_str(), &st) != 0) {
+            if (!warned_) fprintf(stderr, "whisker: %s\n", kNoModelMessage);
+            warned_ = true;
+            return false;
+        }
+        if (path == tried_) return false;
+        tried_ = path;
+        if (!stt.init(path, backend)) {
+            fprintf(stderr, "whisker: could not load the speech model %s\n", path.c_str());
+            return false;
+        }
+        fprintf(stderr, "whisker: loaded speech model %s\n", path.c_str());
+        return true;
+    }
+
+private:
+    std::string tried_;
+    bool warned_ = false;
+};
+
 static void doTranscribe(const PedalConfig& pcfg, AudioCapture& audio, SpeechToText& stt,
                          VirtualKeyboard& keyboard, Overlay& overlay, History& history,
                          Tray& tray, const Config& cfg, bool has_overlay,
@@ -285,14 +313,15 @@ int main(int argc, char* argv[]) {
     AudioCapture audio;
     SpeechToText stt;
     bool has_transcribe = needsTranscribe(cfg);
+    ModelLoader model_loader;
+    bool has_model = false;
 
     if (has_transcribe) {
         if (!audio.init()) {
             fprintf(stderr, "whisker: audio capture unavailable, continuing without transcription\n");
             has_transcribe = false;
-        } else if (!stt.init(cfg.model_path, cfg.backend)) {
-            fprintf(stderr, "whisker: no model loaded, continuing without transcription\n");
-            has_transcribe = false;
+        } else {
+            has_model = model_loader.load(stt, cfg.model_path, cfg.backend);
         }
     }
 
@@ -389,6 +418,20 @@ int main(int argc, char* argv[]) {
 
     auto transcribe = [&](const PedalConfig& pcfg, PedalButton release_button, const std::string& trigger_device) {
         if (!has_transcribe) return;
+        if (!has_model) {
+            // The model is picked after the service starts, so look for it again on every trigger
+            Config fresh = loadConfig(config_path);
+            has_model = model_loader.load(stt, fresh.model_path, fresh.backend);
+        }
+        if (!has_model) {
+            if (has_overlay) {
+                overlay.show();
+                overlay.updateText(kNoModelMessage);
+                overlay.hideAfter(4000);
+            }
+            if (has_haptic) controllers.pulse(trigger_device, 80, 0x8000);
+            return;
+        }
         doTranscribe(pcfg, audio, stt, keyboard, overlay, history, tray, cfg, has_overlay,
                      has_pedal ? &pedal : nullptr,
                      has_hotkey ? &hotkey : nullptr,
