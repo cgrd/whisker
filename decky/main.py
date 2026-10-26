@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 import asyncio
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -32,7 +33,43 @@ def model_label(model: dict) -> str:
 
 
 def model_url(model: dict) -> str:
-    return f"{MODEL_TABLE['repo']}/resolve/main/{model['file']}"
+    # Pinned to the commit the hashes in models.json were taken from
+    return f"{MODEL_TABLE['repo']}/resolve/{MODEL_TABLE['revision']}/{model['file']}"
+
+
+def _plugin_version() -> str:
+    return json.loads((PLUGIN_DIR / "package.json").read_text())["version"]
+
+
+USER_AGENT = f"Whisker/{_plugin_version()} (+https://github.com/cgrd/whisker)"
+
+
+def curl_download_args(url: str, dest: Path) -> list[str]:
+    # One retry on a transient error; a failed download stops until the user starts it again
+    return ["curl", "-fsSL", "--retry", "1", "-A", USER_AGENT, "-o", str(dest), url]
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        while chunk := f.read(1 << 20):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def install_verified(tmp: Path, dest: Path, size: int, sha256: str) -> str:
+    """Moves a finished download into place if its size and hash match, else deletes it. Returns an error or ""."""
+    if not tmp.is_file():
+        error = "The download is missing"
+    elif tmp.stat().st_size != size:
+        error = f"The download has the wrong size ({tmp.stat().st_size} bytes, expected {size})"
+    elif _sha256(tmp) != sha256:
+        error = "The download is corrupt (SHA-256 mismatch)"
+    else:
+        tmp.rename(dest)
+        return ""
+    tmp.unlink(missing_ok=True)
+    return error
 
 
 def known_model(file: str) -> dict:
@@ -334,17 +371,22 @@ class Plugin:
 
     async def _do_download(self, model: dict, dest: Path, tmp: Path) -> None:
         proc = await asyncio.create_subprocess_exec(
-            "curl", "-fSL", "-o", str(tmp), "-C", "-", model_url(model),
+            *curl_download_args(model_url(model), tmp),
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
             env=_user_env(),
         )
         _, stderr = await proc.communicate()
         if proc.returncode != 0:
+            tmp.unlink(missing_ok=True)
             self._download_error = "Download failed, check the connection and try again"
             decky.logger.error(f"Model download failed: {stderr.decode()}")
             return
-        tmp.rename(dest)
+        error = await asyncio.to_thread(install_verified, tmp, dest, model["size"], model["sha256"])
+        if error:
+            self._download_error = f"{error}. Try again."
+            decky.logger.error(f"Model download rejected: {error}")
+            return
         await self.set_option("model", str(dest))
         decky.logger.info("Model download complete")
 

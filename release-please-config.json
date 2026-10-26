@@ -9,6 +9,7 @@
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         "CMakeLists.txt",
+        "get-model.sh",
         {"type": "json", "path": "decky/package.json", "jsonpath": "$.version"}
       ]
     }
