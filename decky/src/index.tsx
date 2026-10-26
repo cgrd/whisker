@@ -4,6 +4,7 @@ import {
     ButtonItem,
     definePlugin,
     DropdownItem,
+    Navigation,
     PanelSection,
     PanelSectionRow,
     SliderField,
@@ -32,6 +33,8 @@ type Diagnostics = {
     model_path: string;
     memory_mb: number;
 };
+type KnownModel = { file: string; label: string; note: string };
+type KnownModels = { repo: string; original: string; models: KnownModel[] };
 type Option = { data: string; label: string };
 type CaptureResult = { button?: string; device?: string; error?: string };
 type Value = string | number | boolean;
@@ -51,6 +54,7 @@ const restartService = callable<[], void>("restart_service");
 const getLogs = callable<[lines: number], string>("get_logs");
 const getDiagnostics = callable<[], Diagnostics>("get_diagnostics");
 const getLastTranscription = callable<[], string>("get_last_transcription");
+const getKnownModels = callable<[], KnownModels>("get_known_models");
 const getModelStatus = callable<[], ModelStatus>("get_model_status");
 const downloadModel = callable<[], boolean>("download_model");
 const cancelDownload = callable<[], void>("cancel_download");
@@ -137,6 +141,7 @@ function WhiskerPanel() {
     const [downloading, setDownloading] = useState(false);
     const [enabled, setEnabled] = useState(false);
     const [models, setModels] = useState<string[]>([]);
+    const [knownModels, setKnownModels] = useState<KnownModels | null>(null);
     const [audioSources, setAudioSources] = useState<AudioSource[]>([]);
     const [config, setConfig] = useState<Config>({});
     const [captureText, setCaptureText] = useState("");
@@ -161,6 +166,10 @@ function WhiskerPanel() {
         (async () => {
             const s = await getAudioSources();
             if (mountedRef.current) setAudioSources(s);
+        })();
+        (async () => {
+            const k = await getKnownModels();
+            if (mountedRef.current) setKnownModels(k);
         })();
         (async () => {
             const m = await getModels();
@@ -337,7 +346,13 @@ function WhiskerPanel() {
         setDiagnostics(await getDiagnostics());
     };
 
-    const modelOptions = models.map((m) => ({ data: m, label: m.split("/").pop() ?? m }));
+    const knownModel = (path: string) => knownModels?.models.find((k) => path.split("/").pop() === k.file);
+    const modelOptions = models.map((m) => ({ data: m, label: knownModel(m)?.label ?? m.split("/").pop() ?? m }));
+    const defaultModel = knownModels?.models[0];
+    const selectedModel = knownModel(get<string>("model"));
+    const link = (label: string, url: string) => row(
+        <ButtonItem label={label} description={url.replace("https://", "")}
+            onClick={() => Navigation.NavigateToExternalWeb(url)} layout="below" />);
     const audioOptions = [{ data: "", label: "Default" }, ...audioSources.map((s) => ({ data: s.id, label: s.name }))];
     const diagnosticsText = diagnostics
         ? `Service: ${diagnostics.running ? "running" : "stopped"} | Socket: ${diagnostics.socket ? "ok" : "missing"}`
@@ -361,21 +376,25 @@ function WhiskerPanel() {
                     </div>)}
             </PanelSection>
             <PanelSection title="Model">
-                {modelOptions.length > 0 ? dropdown("model", "Transcription Model", modelOptions) : (
+                {modelOptions.length > 0 ? dropdown("model", "Transcription Model", modelOptions,
+                    selectedModel?.note) : (
                     <>
                         {downloading ? (
                             <>
                                 {row(<div style={{ padding: "8px", fontSize: "12px" }}>
                                     {`Downloading... ${modelStatus ? modelStatus.progress_mb : 0}`
-                                        + ` / ${modelStatus ? modelStatus.total_mb : 698} MB`}
+                                        + ` / ${modelStatus ? modelStatus.total_mb : "?"} MB`}
                                 </div>)}
                                 {row(<ButtonItem label="Cancel Download" onClick={handleCancelDownload}
                                     layout="below" />)}
                             </>
-                        ) : row(<ButtonItem label="Download Model" description="Parakeet 0.6B (698 MB)"
+                        ) : row(<ButtonItem label="Download Model"
+                            description={defaultModel ? `${defaultModel.label}. ${defaultModel.note}` : ""}
                             onClick={handleDownloadModel} layout="below" />)}
                     </>
                 )}
+                {knownModels && link("Model Files", knownModels.repo)}
+                {knownModels && link("Original NVIDIA Model", knownModels.original)}
             </PanelSection>
             <PanelSection title="Trigger">
                 {dropdown("trigger_button", "Controller Button", triggerOptions,

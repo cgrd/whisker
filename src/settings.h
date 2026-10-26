@@ -13,6 +13,8 @@ struct SettingsRect {
 struct SettingsLayout {
     SettingsRect content;
     SettingsRect overlay_checkbox;
+    SettingsRect model_link;
+    bool model_link_hovered = false;
     SettingsRect save_button;
     bool save_hovered = false;
     bool font_texture_ready = false;

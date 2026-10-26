@@ -11,7 +11,7 @@ trap 'rm -rf "$STAGE"' EXIT
 
 PLUGIN="$STAGE/Whisker"
 mkdir -p "$PLUGIN/dist"
-cp decky/main.py decky/package.json decky/plugin.json decky/README.md "$PLUGIN/"
+cp decky/main.py decky/package.json decky/plugin.json decky/README.md models.json "$PLUGIN/"
 cp decky/dist/index.js "$PLUGIN/dist/"
 cp -r LICENSE THIRD_PARTY_NOTICES.md LICENSES "$PLUGIN/"
 

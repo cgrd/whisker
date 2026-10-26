@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 import asyncio
+import json
 import os
 from pathlib import Path
 
@@ -8,8 +9,35 @@ import decky
 HOME = Path(getattr(decky, "DECKY_USER_HOME", None) or Path.home())
 CONFIG_PATH = HOME / ".config" / "pedal-stt" / "config.yaml"
 MODELS_DIR = HOME / ".local" / "share" / "pedal-stt" / "models"
-DEFAULT_MODEL_URL = "https://huggingface.co/handy-computer/parakeet-unified-en-0.6b-gguf/resolve/main/parakeet-unified-en-0.6b-Q8_0.gguf"
-DEFAULT_MODEL_NAME = "parakeet-unified-en-0.6b-Q8_0.gguf"
+PLUGIN_DIR = Path(__file__).resolve().parent
+
+
+def _load_model_table() -> dict:
+    # Packaged next to main.py; in a source checkout it's the repo's models.json
+    for path in (PLUGIN_DIR / "models.json", PLUGIN_DIR.parent / "models.json"):
+        if path.exists():
+            return json.loads(path.read_text())
+    raise FileNotFoundError("models.json not found")
+
+
+MODEL_TABLE = _load_model_table()
+
+
+def megabytes(size: int) -> int:
+    return (size + 500_000) // 1_000_000
+
+
+def model_label(model: dict) -> str:
+    return f"{MODEL_TABLE['name']}, {model['bits']}-bit ({model['quant']}), {megabytes(model['size'])} MB"
+
+
+def model_url(model: dict) -> str:
+    return f"{MODEL_TABLE['repo']}/resolve/main/{model['file']}"
+
+
+DEFAULT_MODEL = MODEL_TABLE["models"][0]
+DEFAULT_MODEL_NAME = DEFAULT_MODEL["file"]
+DEFAULT_MODEL_URL = model_url(DEFAULT_MODEL)
 
 
 PEDAL_NAMES = ("left", "center", "right")
@@ -254,6 +282,16 @@ class Plugin:
             return []
         return sorted(str(p) for p in MODELS_DIR.glob("*.gguf"))
 
+    async def get_known_models(self) -> dict:
+        return {
+            "repo": MODEL_TABLE["repo"],
+            "original": MODEL_TABLE["original"],
+            "models": [
+                {"file": m["file"], "label": model_label(m), "note": m["note"]}
+                for m in MODEL_TABLE["models"]
+            ],
+        }
+
     async def get_model_status(self) -> dict:
         dest = MODELS_DIR / DEFAULT_MODEL_NAME
         tmp = MODELS_DIR / f".{DEFAULT_MODEL_NAME}.part"
@@ -262,16 +300,16 @@ class Plugin:
         size_mb = 0
         progress_mb = 0
         if downloaded:
-            size_mb = dest.stat().st_size // (1024 * 1024)
+            size_mb = megabytes(dest.stat().st_size)
         if downloading:
-            progress_mb = tmp.stat().st_size // (1024 * 1024)
+            progress_mb = megabytes(tmp.stat().st_size)
         return {
             "downloaded": downloaded,
             "downloading": downloading,
             "path": str(dest),
             "size_mb": size_mb,
             "progress_mb": progress_mb,
-            "total_mb": 698,
+            "total_mb": megabytes(DEFAULT_MODEL["size"]),
         }
 
     async def download_model(self) -> bool:

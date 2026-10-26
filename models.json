@@ -1,0 +1,35 @@
+{
+  "name": "Parakeet 0.6B",
+  "repo": "https://huggingface.co/handy-computer/parakeet-unified-en-0.6b-gguf",
+  "original": "https://huggingface.co/nvidia/parakeet-unified-en-0.6b",
+  "models": [
+    {
+      "file": "parakeet-unified-en-0.6b-Q8_0.gguf",
+      "quant": "Q8_0",
+      "bits": 8,
+      "size": 731357568,
+      "note": "Most accurate. The default."
+    },
+    {
+      "file": "parakeet-unified-en-0.6b-Q6_K.gguf",
+      "quant": "Q6_K",
+      "bits": 6,
+      "size": 602191232,
+      "note": "Nearly as accurate as 8-bit, smaller."
+    },
+    {
+      "file": "parakeet-unified-en-0.6b-Q5_K_M.gguf",
+      "quant": "Q5_K_M",
+      "bits": 5,
+      "size": 540795264,
+      "note": "Smaller again, accuracy close to 6-bit."
+    },
+    {
+      "file": "parakeet-unified-en-0.6b-Q4_K_M.gguf",
+      "quant": "Q4_K_M",
+      "bits": 4,
+      "size": 477274496,
+      "note": "Smallest and fastest, slightly less accurate."
+    }
+  ]
+}

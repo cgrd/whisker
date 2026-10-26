@@ -2,6 +2,7 @@
 #include "settings.h"
 #include "config.h"
 #include "trigger_capture.h"
+#include "models.h"
 
 #include <SDL.h>
 #include <imgui.h>
@@ -46,34 +47,11 @@ struct AudioSource {
     std::string name;
 };
 
-struct KnownModel {
-    const char* name;
-    const char* tag;
-    int size_mb;
-    const char* filename;
-    const char* url;
-};
-
-static const KnownModel known_models[] = {
-    {"Parakeet 0.6B", "Largest", 731,
-     "parakeet-unified-en-0.6b-Q8_0.gguf",
-     "https://huggingface.co/handy-computer/parakeet-unified-en-0.6b-gguf/resolve/main/parakeet-unified-en-0.6b-Q8_0.gguf"},
-    {"Parakeet 0.6B", "Large", 602,
-     "parakeet-unified-en-0.6b-Q6_K.gguf",
-     "https://huggingface.co/handy-computer/parakeet-unified-en-0.6b-gguf/resolve/main/parakeet-unified-en-0.6b-Q6_K.gguf"},
-    {"Parakeet 0.6B", "Medium", 541,
-     "parakeet-unified-en-0.6b-Q5_K_M.gguf",
-     "https://huggingface.co/handy-computer/parakeet-unified-en-0.6b-gguf/resolve/main/parakeet-unified-en-0.6b-Q5_K_M.gguf"},
-    {"Parakeet 0.6B", "Smallest", 477,
-     "parakeet-unified-en-0.6b-Q4_K_M.gguf",
-     "https://huggingface.co/handy-computer/parakeet-unified-en-0.6b-gguf/resolve/main/parakeet-unified-en-0.6b-Q4_K_M.gguf"},
-};
-
 static void drawSizeBar(int size_mb, float width) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 pos = ImGui::GetCursorScreenPos();
     float h = 16.0f;
-    float frac = static_cast<float>(size_mb) / 731.0f;
+    float frac = static_cast<float>(size_mb) / static_cast<float>(modelSizeMb(knownModels().front()));
     // Green for small/fast, blue for large
     int r = static_cast<int>(0 + (0 - 0) * frac);
     int g = static_cast<int>(210 - (210 - 160) * frac);
@@ -86,8 +64,6 @@ static void drawSizeBar(int size_mb, float width) {
     dl->AddText(ImVec2(pos.x + 4, pos.y + (h - ts.y) * 0.5f), IM_COL32(255, 255, 255, 220), buf);
     ImGui::Dummy(ImVec2(width, h));
 }
-
-static constexpr int NUM_KNOWN_MODELS = sizeof(known_models) / sizeof(known_models[0]);
 
 static bool fileExists(const std::string& path) {
     struct stat st;
@@ -258,8 +234,8 @@ static void startDownload(int idx) {
     g_download.model_idx = idx;
     g_download.status.store(1);
 
-    std::string dest = modelsDir() + "/" + known_models[idx].filename;
-    std::string url = known_models[idx].url;
+    std::string dest = modelsDir() + "/" + knownModels()[idx].file;
+    std::string url = modelUrl(knownModels()[idx]);
 
     g_download.error.clear();
     g_download.thread = std::thread([dest, url]() {
@@ -289,8 +265,14 @@ static void startDownload(int idx) {
 
 static bool combo(const char* label, int* current, const char* const items[], int count);
 
+static SettingsRect itemRect() {
+    ImVec2 min = ImGui::GetItemRectMin();
+    ImVec2 max = ImGui::GetItemRectMax();
+    return {min.x, min.y, max.x, max.y};
+}
+
 static void drawModelSection(Config& cfg, std::vector<ModelState>& model_states,
-                              std::vector<ScannedModel>& scanned, bool& scanned_done) {
+                              std::vector<ScannedModel>& scanned, bool& scanned_done, SettingsLayout& layout) {
     ImGui::Text("Model");
     ImGui::Spacing();
 
@@ -301,7 +283,7 @@ static void drawModelSection(Config& cfg, std::vector<ModelState>& model_states,
         ImGui::TableSetupColumn("##action", ImGuiTableColumnFlags_WidthFixed, 90.0f);
         ImGui::TableHeadersRow();
 
-        for (int i = 0; i < NUM_KNOWN_MODELS; ++i) {
+        for (int i = 0; i < static_cast<int>(knownModels().size()); ++i) {
             ImGui::TableNextRow();
             ImGui::PushID(i);
 
@@ -311,13 +293,13 @@ static void drawModelSection(Config& cfg, std::vector<ModelState>& model_states,
                     ImGui::GetColorU32(ImVec4(0.00f, 0.45f, 0.75f, 0.20f)));
             }
 
+            const KnownModel& model = knownModels()[i];
             ImGui::TableNextColumn();
-            ImGui::Text("%s", known_models[i].name);
-            ImGui::SameLine();
-            ImGui::TextDisabled("%s", known_models[i].tag);
+            ImGui::Text("%s", modelLabel(model).c_str());
+            ImGui::TextDisabled("%s", model.note.c_str());
 
             ImGui::TableNextColumn();
-            drawSizeBar(known_models[i].size_mb, ImGui::GetContentRegionAvail().x);
+            drawSizeBar(modelSizeMb(model), ImGui::GetContentRegionAvail().x);
 
             ImGui::TableNextColumn();
             if (model_states[i].downloaded) {
@@ -358,11 +340,18 @@ static void drawModelSection(Config& cfg, std::vector<ModelState>& model_states,
         ImGui::EndTable();
     }
 
+    ImGui::TextDisabled("Same NVIDIA model at different precisions. Fewer bits: smaller and faster.");
+    ImGui::TextLinkOpenURL("Model files on Hugging Face", modelRepoUrl().c_str());
+    layout.model_link = itemRect();
+    layout.model_link_hovered = ImGui::IsItemHovered();
+    ImGui::SameLine();
+    ImGui::TextLinkOpenURL("Original NVIDIA model", modelOriginalUrl().c_str());
+
     // Check for completed download
     if (g_download.status.load() == 2) {
         int idx = g_download.model_idx;
-        if (idx >= 0 && idx < NUM_KNOWN_MODELS) {
-            model_states[idx].local_path = modelsDir() + "/" + known_models[idx].filename;
+        if (idx >= 0 && idx < static_cast<int>(knownModels().size())) {
+            model_states[idx].local_path = modelsDir() + "/" + knownModels()[idx].file;
             model_states[idx].downloaded = true;
             cfg.model_path = model_states[idx].local_path;
         }
@@ -403,7 +392,7 @@ static void drawModelSection(Config& cfg, std::vector<ModelState>& model_states,
         // Deduplicate against known models
         for (auto it = scanned.begin(); it != scanned.end();) {
             bool is_known = false;
-            for (int i = 0; i < NUM_KNOWN_MODELS; ++i) {
+            for (int i = 0; i < static_cast<int>(knownModels().size()); ++i) {
                 if (model_states[i].downloaded && it->path == model_states[i].local_path) {
                     is_known = true;
                     break;
@@ -625,12 +614,6 @@ static void setAutostart(bool enable) {
     } else {
         unlink(path.c_str());
     }
-}
-
-static SettingsRect itemRect() {
-    ImVec2 min = ImGui::GetItemRectMin();
-    ImVec2 max = ImGui::GetItemRectMax();
-    return {min.x, min.y, max.x, max.y};
 }
 
 static void drawAudioTab(Config& cfg, std::vector<AudioSource>& sources, int& selected_source,
@@ -1164,13 +1147,13 @@ static void loadUi(SettingsUi& ui, const std::string& config_path, std::vector<A
         }
     }
 
-    ui.model_states.resize(NUM_KNOWN_MODELS);
-    for (int i = 0; i < NUM_KNOWN_MODELS; ++i) {
-        ui.model_states[i].local_path = findModelPath(known_models[i].filename);
+    ui.model_states.resize(static_cast<int>(knownModels().size()));
+    for (int i = 0; i < static_cast<int>(knownModels().size()); ++i) {
+        ui.model_states[i].local_path = findModelPath(knownModels()[i].file.c_str());
         ui.model_states[i].downloaded = !ui.model_states[i].local_path.empty();
     }
     if (ui.cfg.model_path.empty() || !fileExists(ui.cfg.model_path)) {
-        for (int i = 0; i < NUM_KNOWN_MODELS; ++i) {
+        for (int i = 0; i < static_cast<int>(knownModels().size()); ++i) {
             if (ui.model_states[i].downloaded) {
                 ui.cfg.model_path = ui.model_states[i].local_path;
                 break;
@@ -1224,7 +1207,7 @@ static void drawFrame(SettingsUi& ui) {
 
     switch (ui.active_tab) {
     case SettingsTab::Audio: drawAudioTab(ui.cfg, ui.sources, ui.selected_source, ui.layout); break;
-    case SettingsTab::Model: drawModelSection(ui.cfg, ui.model_states, ui.scanned_models, ui.scanned_done); break;
+    case SettingsTab::Model: drawModelSection(ui.cfg, ui.model_states, ui.scanned_models, ui.scanned_done, ui.layout); break;
     case SettingsTab::Triggers: drawTriggersTab(ui.cfg, ui.triggers, ui.layout); break;
     case SettingsTab::History:
         if (ui.history_needs_reload) {

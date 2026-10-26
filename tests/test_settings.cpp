@@ -90,6 +90,16 @@ static void checkScale(const std::string& config, float scale) {
                 child_bg.r, child_bg.g, child_bg.b);
     CHECK(frame.r != child_bg.r || frame.g != child_bg.g || frame.b != child_bg.b);
 
+    // The model links on the Model page are clickable at every scale.
+    SettingsLayout models = settingsRenderOffscreen(renderer, config, kWidth, kHeight, scale, -1, -1, 2, SettingsTab::Model);
+    float link_x = (models.model_link.x0 + models.model_link.x1) / 2;
+    float link_y = (models.model_link.y0 + models.model_link.y1) / 2;
+    models = settingsRenderOffscreen(renderer, config, kWidth, kHeight, scale, link_x, link_y, 3, SettingsTab::Model);
+    CHECK(inside(models.model_link, models.content));
+    CHECK(models.model_link_hovered);
+    // Pedal settings live only on the Triggers page.
+    CHECK(models.items.count("left_pedal") == 0);
+
     checkTriggersPage(renderer, config, scale);
 
     SDL_DestroyRenderer(renderer);
