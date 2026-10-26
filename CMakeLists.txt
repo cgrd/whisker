@@ -186,6 +186,7 @@ add_executable(whisker
     src/clipboard.cpp
     src/tray.cpp
     src/settings.cpp
+    src/trigger_capture.cpp
     src/overlay_gamescope.cpp
     src/overlay_layershell.cpp
 )

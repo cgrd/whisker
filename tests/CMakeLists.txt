@@ -14,6 +14,13 @@ whisker_test(test_keyboard ${CMAKE_SOURCE_DIR}/src/keyboard.cpp)
 target_include_directories(test_keyboard PRIVATE ${LIBEVDEV_INCLUDE_DIRS})
 target_link_libraries(test_keyboard PRIVATE ${LIBEVDEV_LIBRARIES})
 
+whisker_test(test_trigger_capture
+    ${CMAKE_SOURCE_DIR}/src/trigger_capture.cpp
+    ${CMAKE_SOURCE_DIR}/src/buttons.cpp
+    ${CMAKE_SOURCE_DIR}/src/keyboard.cpp)
+target_include_directories(test_trigger_capture PRIVATE ${LIBEVDEV_INCLUDE_DIRS} ${SDL2_INCLUDE_DIRS})
+target_link_libraries(test_trigger_capture PRIVATE ${LIBEVDEV_LIBRARIES})
+
 whisker_test(test_overlay
     ${CMAKE_SOURCE_DIR}/src/overlay_gamescope.cpp
     ${CMAKE_SOURCE_DIR}/src/overlay_layershell.cpp)
@@ -42,6 +49,8 @@ add_test(NAME apprun_flags_known
 
 whisker_test(test_settings
     ${CMAKE_SOURCE_DIR}/src/settings.cpp
+    ${CMAKE_SOURCE_DIR}/src/trigger_capture.cpp
+    ${CMAKE_SOURCE_DIR}/src/buttons.cpp
     ${CMAKE_SOURCE_DIR}/src/config.cpp)
 target_include_directories(test_settings PRIVATE ${PIPEWIRE_INCLUDE_DIRS} ${SDL2_INCLUDE_DIRS})
 target_link_libraries(test_settings PRIVATE imgui whisker_assets ${PIPEWIRE_LIBRARIES} ${SDL2_LIBRARIES})
