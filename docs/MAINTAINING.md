@@ -85,7 +85,22 @@ Versions follow semver; release-please derives them from PR titles (`fix` bumps 
 
 To rebuild assets for an existing tag, run the Release workflow manually with that tag.
 
-PRs opened with the default `GITHUB_TOKEN` (the release PR, `deps-bump` PRs) count as coming from an outside contributor, so their CI waits for "Approve and run" in the Actions tab, and the Conventions check doesn't start until you close and reopen the PR. The Conventions check skips the template for release-please's own PR. Either approve the runs, merge using your admin bypass, or add a fine-grained personal access token as the `BOT_TOKEN` secret (this repo only, Contents and Pull requests read/write); the workflows use it when present.
+PRs opened with the default `GITHUB_TOKEN` count as coming from an outside contributor, so their CI waits for "Approve and run" and the Conventions check never starts. The workflows use the release app token to avoid that (see Release app). The Conventions check skips the template for release-please's own PR.
+
+### Release app
+
+The `release` and `deps-bump` workflows mint a token for a GitHub App with `actions/create-github-app-token`. Pushes made with it trigger workflows, so CI and the required Conventions check run on the release PR and the bump PRs without a close and reopen.
+
+App permissions: Contents, Pull requests and Issues read/write, nothing else. No webhook. Install it only on cgrd/whisker. Then store its ID and a private key:
+
+```sh
+gh variable set RELEASE_APP_ID --repo cgrd/whisker --body <app-id>
+gh secret set RELEASE_APP_PRIVATE_KEY --repo cgrd/whisker < release-app.private-key.pem
+```
+
+Rotate the key by generating a new one in the app settings, updating the secret, then deleting the old key in the app settings.
+
+Without the variable the workflows fall back to `GITHUB_TOKEN` and log a warning. Everything still works, but close and reopen the release PR (or a bump PR) so the required checks run, and approve its CI runs.
 
 ## Security reports
 
@@ -192,7 +207,7 @@ Check names must match what the first CI run reports; adjust them in Settings > 
 Click in the web UI:
 
 * Settings > Code security: make sure CodeQL "default setup" is off, since `codeql.yml` is the advanced setup
-* Settings > Secrets and variables > Actions: optionally add `BOT_TOKEN` (see Releases)
+* Settings > Secrets and variables > Actions: add the `RELEASE_APP_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret (see Release app)
 * Your account: 2FA with a passkey or security key
 
 ## Follow-ups
