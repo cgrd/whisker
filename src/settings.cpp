@@ -1183,11 +1183,12 @@ static void drawFrame(SettingsUi& ui) {
     for (int i = 0; i < 4; ++i) {
         bool selected = (ui.active_tab == static_cast<SettingsTab>(i));
         if (selected) {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.00f, 0.50f, 0.80f, 0.60f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.00f, 0.55f, 0.85f, 0.70f));
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.00f, 0.65f, 0.95f, 0.80f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.00f, 0.70f, 1.00f, 0.90f));
         }
         if (ImGui::Button(tabs[i], ImVec2(sidebar_w - 2 * ImGui::GetStyle().WindowPadding.x, 36)))
             ui.active_tab = static_cast<SettingsTab>(i);
+        trackItem(ui.layout, (std::string("tab_") + tabs[i]).c_str());
         if (selected)
             ImGui::PopStyleColor(2);
     }
