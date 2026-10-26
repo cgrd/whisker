@@ -169,6 +169,7 @@ endfunction()
 model_string(_name "${_models}" name)
 model_string(_repo "${_models}" repo)
 model_string(_original "${_models}" original)
+model_string(_revision "${_models}" revision)
 model_string(_recommended "${_models}" recommended)
 model_string(_recommended_reason "${_models}" recommended_reason)
 set(_rows "")
@@ -177,10 +178,11 @@ math(EXPR _last "${_count} - 1")
 foreach(i RANGE ${_last})
     model_string(_file "${_models}" models ${i} file)
     model_string(_quant "${_models}" models ${i} quant)
+    model_string(_sha256 "${_models}" models ${i} sha256)
     model_string(_bits "${_models}" models ${i} bits)
     model_string(_size "${_models}" models ${i} size)
     model_string(_note "${_models}" models ${i} note)
-    string(APPEND _rows "    {\"${_file}\", \"${_quant}\", ${_bits}, ${_size}ULL, \"${_note}\"},\n")
+    string(APPEND _rows "    {\"${_file}\", \"${_quant}\", ${_bits}, ${_size}ULL, \"${_sha256}\", \"${_note}\"},\n")
 endforeach()
 file(CONFIGURE OUTPUT ${CMAKE_BINARY_DIR}/models_data.h CONTENT
 "// Generated from models.json by CMakeLists.txt
@@ -188,6 +190,8 @@ file(CONFIGURE OUTPUT ${CMAKE_BINARY_DIR}/models_data.h CONTENT
 static const char* const kModelName = \"${_name}\";
 static const char* const kModelRepo = \"${_repo}\";
 static const char* const kModelOriginal = \"${_original}\";
+static const char* const kModelRevision = \"${_revision}\";
+static const char* const kWhiskerVersion = \"${PROJECT_VERSION}\";
 static const char* const kModelRecommended = \"${_recommended}\";
 static const char* const kModelRecommendedReason = \"${_recommended_reason}\";
 static const ModelRow kModelRows[] = {
@@ -227,6 +231,7 @@ add_executable(whisker
     src/settings.cpp
     src/trigger_capture.cpp
     src/models.cpp
+    src/sha256.cpp
     src/overlay_gamescope.cpp
     src/overlay_layershell.cpp
 )

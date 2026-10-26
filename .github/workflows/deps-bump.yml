@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-name: Bump CMake dependencies
+name: Bump CMake dependencies and the speech models
 
 on:
   schedule:
@@ -50,3 +50,24 @@ jobs:
           bump TRANSCRIBE_CPP_TAG transcribe.cpp \
             "$(git ls-remote https://github.com/handy-computer/transcribe.cpp refs/heads/main | cut -f1)"
           bump IMGUI_TAG imgui "$(gh api repos/ocornut/imgui/releases/latest --jq .tag_name)"
+
+          # Speech models: pin models.json to the HF repo's latest commit with fresh sizes and hashes
+          python3 scripts/update-models.py
+          if git diff --quiet models.json; then
+            echo "speech models are current"
+          else
+            rev=$(python3 -c 'import json; print(json.load(open("models.json"))["revision"])')
+            branch="deps/models-${rev:0:12}"
+            if git ls-remote --exit-code origin "refs/heads/$branch" >/dev/null; then
+              echo "$branch already open"
+            else
+              git stash
+              git switch -c "$branch" origin/main
+              git stash pop
+              git commit -s -am "build(deps): pin the speech models to ${rev:0:12}"
+              git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$branch"
+              gh pr create --base main --head "$branch" --label dependencies \
+                --title "build(deps): pin the speech models to ${rev:0:12}" \
+                --body "Automated update of \`models.json\` to commit \`$rev\` of the Hugging Face model repo, with the sizes and SHA-256 hashes its API reports. Every download is verified against them. Check the model card for changes before merging."
+            fi
+          fi

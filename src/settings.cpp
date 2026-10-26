@@ -234,32 +234,16 @@ static void startDownload(int idx) {
     g_download.model_idx = idx;
     g_download.status.store(1);
 
-    std::string dest = modelsDir() + "/" + knownModels()[idx].file;
-    std::string url = modelUrl(knownModels()[idx]);
-
     g_download.error.clear();
-    g_download.thread = std::thread([dest, url]() {
-        std::string tmp = dest + ".part";
-        std::string errlog = dest + ".err";
-        std::string cmd = "curl -fL -o \"" + tmp + "\" \"" + url + "\" 2>\"" + errlog + "\"";
-        int ret = system(cmd.c_str());
-        if (ret == 0) {
-            rename(tmp.c_str(), dest.c_str());
-            remove(errlog.c_str());
+    g_download.thread = std::thread([idx]() {
+        std::string error = downloadModel(knownModels()[idx], modelsDir());
+        if (error.empty()) {
             g_download.status.store(2);
-        } else {
-            remove(tmp.c_str());
-            FILE* f = fopen(errlog.c_str(), "r");
-            if (f) {
-                char buf[256]{};
-                fread(buf, 1, sizeof(buf) - 1, f);
-                fclose(f);
-                g_download.error = buf;
-            }
-            remove(errlog.c_str());
-            fprintf(stderr, "whisker: model download failed (exit %d): %s\n", ret, g_download.error.c_str());
-            g_download.status.store(3);
+            return;
         }
+        g_download.error = error;
+        fprintf(stderr, "whisker: model download failed: %s\n", error.c_str());
+        g_download.status.store(3);
     });
 }
 

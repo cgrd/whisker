@@ -84,7 +84,7 @@ For cairo you may instead use it under MPL-1.1. Its source is the unmodified ups
 |-----------|---------|--------|
 | NVIDIA Parakeet unified-en 0.6B, GGUF conversion | NVIDIA Open Model License | https://huggingface.co/handy-computer/parakeet-unified-en-0.6b-gguf (from https://huggingface.co/nvidia/parakeet-unified-en-0.6b) |
 
-Whisker's settings window, the Decky plugin and `get-model.sh` download the model from Hugging Face only when the user picks one; the install script never downloads it. It's governed by the [NVIDIA Open Model License Agreement](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/), not by Whisker's license.
+Whisker's settings window, the Decky plugin and `get-model.sh` download the model from Hugging Face only when the user picks one; the install script never downloads it. Downloads are pinned to the repo commit in `models.json` and verified against the SHA-256 and size recorded there. It's governed by the [NVIDIA Open Model License Agreement](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/), not by Whisker's license.
 
 ## Build tools (not shipped)
 

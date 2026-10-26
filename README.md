@@ -108,7 +108,7 @@ Whisker uses NVIDIA Parakeet 0.6B (`parakeet-unified-en-0.6b`) in GGUF format, c
 | 5-bit (Q5_K_M) | 541 MB | Smaller again, accuracy close to 6-bit. |
 | 4-bit (Q4_K_M) | 477 MB | Smallest and fastest, slightly less accurate. |
 
-They're the same model at different precisions. The original is [nvidia/parakeet-unified-en-0.6b](https://huggingface.co/nvidia/parakeet-unified-en-0.6b). The list lives in `models.json`, which the settings window and the Decky plugin both read.
+They're the same model at different precisions. The original is [nvidia/parakeet-unified-en-0.6b](https://huggingface.co/nvidia/parakeet-unified-en-0.6b). The list lives in `models.json`, which the settings window, the Decky plugin and `get-model.sh` all read. Downloads are pinned to one commit of the Hugging Face repo and checked against the size and SHA-256 recorded there; a file that doesn't match is deleted and the download reports an error. A failed download isn't retried in the background: click Download again. A weekly job opens a PR when the repo has a newer commit.
 
 The model isn't part of Whisker. It's made by NVIDIA and licensed under the [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/).
 

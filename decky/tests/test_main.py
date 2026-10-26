@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: MIT
 import asyncio
+import http.server
+import logging
+import os
+import threading
+from pathlib import Path
 
 import main
 import pytest
@@ -219,3 +224,78 @@ def test_download_progress_reports_decimal_megabytes(tmp_path, monkeypatch, conf
     assert status["downloading"] == "parakeet-unified-en-0.6b-Q8_0.gguf"
     assert status["progress_mb"] == 2
     assert status["total_mb"] == 731
+
+
+def test_model_urls_are_pinned_to_a_commit():
+    revision = main.MODEL_TABLE["revision"]
+    assert len(revision) == 40
+    for model in main.MODEL_TABLE["models"]:
+        assert main.model_url(model).endswith(f"/resolve/{revision}/{model['file']}")
+        assert len(model["sha256"]) == 64
+
+
+def test_downloads_identify_whisker():
+    args = main.curl_download_args("https://example.invalid/m.gguf", Path("/tmp/m.part"))
+    agent = args[args.index("-A") + 1]
+    assert agent.startswith("Whisker/") and agent.endswith("(+https://github.com/cgrd/whisker)")
+    assert args[args.index("--retry") + 1] == "1"
+
+
+ABC_SHA256 = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+
+
+def test_install_verified_accepts_a_matching_file(tmp_path):
+    tmp, dest = tmp_path / ".m.part", tmp_path / "m.gguf"
+    tmp.write_bytes(b"abc")
+    assert main.install_verified(tmp, dest, 3, ABC_SHA256) == ""
+    assert dest.read_bytes() == b"abc"
+    assert not tmp.exists()
+
+
+@pytest.mark.parametrize(("size", "sha256", "message"), [
+    (3, "0" * 64, "SHA-256"),
+    (4, ABC_SHA256, "wrong size"),
+])
+def test_install_verified_deletes_a_bad_file(tmp_path, size, sha256, message):
+    tmp, dest = tmp_path / ".m.part", tmp_path / "m.gguf"
+    tmp.write_bytes(b"abc")
+    assert message in main.install_verified(tmp, dest, size, sha256)
+    assert not tmp.exists()
+    assert not dest.exists()
+
+
+@pytest.fixture
+def failing_server():
+    requests = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            requests.append(self.path)
+            self.send_response(503)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{server.server_address[1]}", requests
+    server.shutdown()
+
+
+def test_failed_download_is_retried_at_most_once(tmp_path, monkeypatch, config_path, failing_server):
+    url, requests = failing_server
+    monkeypatch.setattr(main, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(main, "model_url", lambda model: f"{url}/{model['file']}")
+    monkeypatch.setattr(main, "_user_env", lambda: dict(os.environ))
+    monkeypatch.setattr(main.decky, "logger", logging.getLogger("test"), raising=False)
+    plugin = main.Plugin()
+    model = main.known_model("parakeet-unified-en-0.6b-Q4_K_M.gguf")
+    dest = tmp_path / model["file"]
+    asyncio.run(plugin._do_download(model, dest, main._part_path(model["file"])))
+    assert 1 <= len(requests) <= 2
+    assert not dest.exists()
+    assert not main._part_path(model["file"]).exists()
+    assert "Download failed" in asyncio.run(plugin.get_model_status())["error"]
