@@ -38,6 +38,9 @@ set_tests_properties(cli_check_bad_config PROPERTIES WILL_FAIL TRUE)
 add_test(NAME cli_check_bad_button COMMAND whisker --check-config -c ${CMAKE_CURRENT_SOURCE_DIR}/data/bad-button.yaml)
 set_tests_properties(cli_check_bad_button PROPERTIES WILL_FAIL TRUE)
 
+whisker_test(test_models ${CMAKE_SOURCE_DIR}/src/models.cpp)
+target_include_directories(test_models PRIVATE ${CMAKE_BINARY_DIR})
+
 whisker_test(test_spawn ${CMAKE_SOURCE_DIR}/src/spawn.cpp)
 
 add_test(NAME cli_unknown_flag
@@ -51,7 +54,8 @@ whisker_test(test_settings
     ${CMAKE_SOURCE_DIR}/src/settings.cpp
     ${CMAKE_SOURCE_DIR}/src/trigger_capture.cpp
     ${CMAKE_SOURCE_DIR}/src/buttons.cpp
-    ${CMAKE_SOURCE_DIR}/src/config.cpp)
+    ${CMAKE_SOURCE_DIR}/src/config.cpp
+    ${CMAKE_SOURCE_DIR}/src/models.cpp)
 target_include_directories(test_settings PRIVATE ${PIPEWIRE_INCLUDE_DIRS} ${SDL2_INCLUDE_DIRS})
 target_link_libraries(test_settings PRIVATE imgui whisker_assets ${PIPEWIRE_LIBRARIES} ${SDL2_LIBRARIES})
 target_compile_definitions(test_settings PRIVATE SAMPLE_CONFIG="${CMAKE_SOURCE_DIR}/config.yaml")

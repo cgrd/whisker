@@ -155,6 +155,41 @@ add_custom_command(OUTPUT ${ICON_HEADER}
     COMMENT "Embedding icon as C array"
 )
 
+# models.json is the one model table; the Decky plugin reads the same file at runtime
+set(MODELS_JSON ${CMAKE_SOURCE_DIR}/models.json)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${MODELS_JSON})
+file(READ ${MODELS_JSON} _models)
+function(model_string out json)
+    string(JSON _value GET "${json}" ${ARGN})
+    if(_value MATCHES "[\"\\\\]")
+        message(FATAL_ERROR "models.json: quotes and backslashes are not allowed in ${ARGN}")
+    endif()
+    set(${out} "${_value}" PARENT_SCOPE)
+endfunction()
+model_string(_name "${_models}" name)
+model_string(_repo "${_models}" repo)
+model_string(_original "${_models}" original)
+set(_rows "")
+string(JSON _count LENGTH "${_models}" models)
+math(EXPR _last "${_count} - 1")
+foreach(i RANGE ${_last})
+    model_string(_file "${_models}" models ${i} file)
+    model_string(_quant "${_models}" models ${i} quant)
+    model_string(_bits "${_models}" models ${i} bits)
+    model_string(_size "${_models}" models ${i} size)
+    model_string(_note "${_models}" models ${i} note)
+    string(APPEND _rows "    {\"${_file}\", \"${_quant}\", ${_bits}, ${_size}ULL, \"${_note}\"},\n")
+endforeach()
+file(CONFIGURE OUTPUT ${CMAKE_BINARY_DIR}/models_data.h CONTENT
+"// Generated from models.json by CMakeLists.txt
+#pragma once
+static const char* const kModelName = \"${_name}\";
+static const char* const kModelRepo = \"${_repo}\";
+static const char* const kModelOriginal = \"${_original}\";
+static const ModelRow kModelRows[] = {
+${_rows}};
+")
+
 add_library(whisker_assets STATIC src/font_embed.cpp src/icon_embed.cpp ${FONT_HEADER} ${ICON_HEADER})
 target_include_directories(whisker_assets PUBLIC ${CMAKE_BINARY_DIR})
 
@@ -187,6 +222,7 @@ add_executable(whisker
     src/tray.cpp
     src/settings.cpp
     src/trigger_capture.cpp
+    src/models.cpp
     src/overlay_gamescope.cpp
     src/overlay_layershell.cpp
 )

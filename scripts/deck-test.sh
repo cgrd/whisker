@@ -39,5 +39,6 @@ echo "==> Hardware-in-the-loop test with virtual controllers (sudo on the Deck)"
 ssh "$DECK" "rm -rf /tmp/whisker-hil && mkdir -p /tmp/whisker-hil/scripts /tmp/whisker-hil/decky"
 scp -q scripts/hil-test.py "$DECK:/tmp/whisker-hil/scripts/"
 scp -q decky/main.py "$DECK:/tmp/whisker-hil/decky/"
+scp -q models.json "$DECK:/tmp/whisker-hil/"
 ssh -t "$DECK" "sudo python3 -I /tmp/whisker-hil/scripts/hil-test.py \
     --whisker /home/deck/Applications/Whisker-x86_64.AppImage --user deck --service --puck"

@@ -99,12 +99,14 @@ The recording start and stop rumble goes to the controller you pressed. To add a
 
 Whisker uses NVIDIA Parakeet 0.6B (`parakeet-unified-en-0.6b`) in GGUF format, converted by the transcribe.cpp project and downloaded from [Hugging Face](https://huggingface.co/handy-computer/parakeet-unified-en-0.6b-gguf). All quantizations score about the same (about 1.6% word error rate on LibriSpeech), so pick by disk space in settings:
 
-| Model | Size |
-|-------|------|
-| Q8_0 (default) | 731 MB |
-| Q6_K | 602 MB |
-| Q5_K_M | 541 MB |
-| Q4_K_M | 477 MB |
+| Model | Size | Notes |
+|-------|------|-------|
+| 8-bit (Q8_0) | 731 MB | Most accurate. The default. |
+| 6-bit (Q6_K) | 602 MB | Nearly as accurate as 8-bit, smaller. |
+| 5-bit (Q5_K_M) | 541 MB | Smaller again, accuracy close to 6-bit. |
+| 4-bit (Q4_K_M) | 477 MB | Smallest and fastest, slightly less accurate. |
+
+They're the same model at different precisions. The original is [nvidia/parakeet-unified-en-0.6b](https://huggingface.co/nvidia/parakeet-unified-en-0.6b). The list lives in `models.json`, which the settings window and the Decky plugin both read.
 
 The model isn't part of Whisker. It's made by NVIDIA and licensed under the [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/).
 

@@ -158,3 +158,24 @@ def test_parse_capture_reply(line, reply):
 def test_parse_capture_reply_rejects_unknown_buttons():
     with pytest.raises(ValueError):
         main.parse_capture_reply("L9 pad\n")
+
+
+def test_model_labels_come_from_the_shared_table():
+    known = asyncio.run(main.Plugin().get_known_models())
+    labels = [m["label"] for m in known["models"]]
+    assert labels == [
+        "Parakeet 0.6B, 8-bit (Q8_0), 731 MB",
+        "Parakeet 0.6B, 6-bit (Q6_K), 602 MB",
+        "Parakeet 0.6B, 5-bit (Q5_K_M), 541 MB",
+        "Parakeet 0.6B, 4-bit (Q4_K_M), 477 MB",
+    ]
+    assert known["repo"] == "https://huggingface.co/handy-computer/parakeet-unified-en-0.6b-gguf"
+    assert known["original"] == "https://huggingface.co/nvidia/parakeet-unified-en-0.6b"
+    assert main.DEFAULT_MODEL_NAME == "parakeet-unified-en-0.6b-Q8_0.gguf"
+
+
+def test_model_status_reports_decimal_megabytes(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "MODELS_DIR", tmp_path)
+    status = asyncio.run(main.Plugin().get_model_status())
+    assert status["total_mb"] == 731
+    assert not status["downloaded"]
