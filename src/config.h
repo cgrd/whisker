@@ -38,7 +38,7 @@ struct Config {
     bool undo_enabled = true;
     int recording_timeout = 30;
     std::array<PedalConfig, 3> pedals; // [0]=left, [1]=center, [2]=right
-    std::string chat_profile;
+    std::string chat_profile = kChatProfileAuto;
     ChatProfiles chat_profiles;
 };
 

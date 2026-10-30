@@ -591,16 +591,17 @@ static void submitKeyCombo(const char* label, std::string& value) {
 
 static void chatProfileCombo(const char* label, Config& cfg) {
     std::vector<std::string> names = chatProfileNames(cfg.chat_profiles);
-    names.insert(names.begin(), "none");
+    names.insert(names.begin(), {kChatProfileAuto, kChatProfileNone});
+    std::string current = chatProfileOff(cfg.chat_profile) ? kChatProfileNone : cfg.chat_profile;
     std::vector<const char*> items;
     int idx = 0;
     for (size_t i = 0; i < names.size(); ++i) {
         items.push_back(names[i].c_str());
-        if (names[i] == cfg.chat_profile) idx = static_cast<int>(i);
+        if (names[i] == current) idx = static_cast<int>(i);
     }
     ImGui::SetNextItemWidth(-1);
     if (combo(label, &idx, items.data(), static_cast<int>(items.size())))
-        cfg.chat_profile = idx == 0 ? "" : names[idx];
+        cfg.chat_profile = names[idx];
 }
 
 static std::string autostartPath() {

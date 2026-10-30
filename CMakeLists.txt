@@ -213,6 +213,7 @@ add_executable(whisker
     src/main.cpp
     src/config.cpp
     src/chat_profile.cpp
+    src/processes.cpp
     src/pedal.cpp
     src/keyboard.cpp
     src/hotkey.cpp

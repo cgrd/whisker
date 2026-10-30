@@ -92,6 +92,7 @@ BUTTONS = (
 CAPTURE_TIMEOUT_S = 12
 # Must match builtinProfiles() in src/chat_profile.cpp
 BUILTIN_CHAT_PROFILES = ("wow",)
+CHAT_PROFILE_MODES = ("auto", "none", "")
 
 
 def button_chord(path: str, value):
@@ -115,7 +116,8 @@ def parse_capture_reply(line: str) -> dict:
 def chat_profile_names(config: dict) -> list[str]:
     custom = config.get("chat_profiles")
     custom = list(custom) if isinstance(custom, dict) else []
-    return [*BUILTIN_CHAT_PROFILES, *(name for name in custom if name not in BUILTIN_CHAT_PROFILES)]
+    return [*BUILTIN_CHAT_PROFILES,
+            *(name for name in custom if name not in (*BUILTIN_CHAT_PROFILES, *CHAT_PROFILE_MODES))]
 
 
 TOP_OPTIONS = {
@@ -310,7 +312,7 @@ class Plugin:
         value = _coerce(path, _option_spec(parts), value)
         config = _read_config()
         # Profiles themselves are config-file only; the plugin just picks one
-        if parts == ["chat_profile"] and value and value not in chat_profile_names(config):
+        if parts == ["chat_profile"] and value not in (*CHAT_PROFILE_MODES, *chat_profile_names(config)):
             raise ValueError(f"chat_profile: unknown profile '{value}'")
         node = config
         for part in parts[:-1]:

@@ -149,6 +149,7 @@ chat_profiles:
       jaina proudmoore: "Jaina"
   ffxiv:
     open_key: enter
+    match: "ffxiv_dx11.exe, SquareEnix/FINAL FANTASY XIV"
     channels:
       free_company:
         command: /fc
@@ -166,6 +167,7 @@ def test_parse_chat_profiles_block():
     assert data["chat_profiles"]["wow"] == {"names": {"thrall": "Thrall", "jaina proudmoore": "Jaina"}}
     ffxiv = data["chat_profiles"]["ffxiv"]
     assert ffxiv["open_key"] == "enter"
+    assert ffxiv["match"] == "ffxiv_dx11.exe, SquareEnix/FINAL FANTASY XIV"
     assert ffxiv["channels"]["free_company"] == {"command": "/fc", "say": "free company, fc"}
     assert ffxiv["channels"]["tell"] == {"command": "/tell", "say": "[tell, whisper]", "target": True}
     assert data["pedals"] == main.parse_yaml(SAMPLE)["pedals"]
@@ -188,6 +190,11 @@ def test_set_chat_profile_keeps_profiles_and_pedals(config_path):
     assert data["pedals"] == before["pedals"]
     set_option("chat_profile", "")
     assert main.parse_yaml(config_path.read_text())["chat_profile"] == ""
+    for mode in ("auto", "none"):
+        set_option("chat_profile", mode)
+        data = main.parse_yaml(config_path.read_text())
+        assert data["chat_profile"] == mode
+        assert data["chat_profiles"] == before["chat_profiles"]
 
 
 def test_chat_profile_must_exist(config_path):
@@ -201,6 +208,7 @@ def test_chat_profile_names(config_path):
     assert main.chat_profile_names({}) == ["wow"]
     assert main.chat_profile_names(main.parse_yaml(CHAT_SAMPLE)) == ["wow", "ffxiv"]
     assert asyncio.run(main.Plugin().get_chat_profiles()) == ["wow"]
+    assert main.chat_profile_names({"chat_profiles": {"auto": {}, "none": {}, "eso": {}}}) == ["wow", "eso"]
 
 
 def test_user_env_points_at_the_user_session():

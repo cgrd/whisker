@@ -18,15 +18,18 @@ trigger_button: L5
 # Key pressed after dictated text is typed: none, enter, tab
 submit_key: none
 
-# Game chat profile: empty for none, or wow. "Party, pull in five" opens the chat box
-# and types "/p Pull in five". Custom profiles and character names go under chat_profiles.
-chat_profile: ""
+# Game chat profile: auto, none, or a profile name such as wow. "Party, pull in five"
+# opens the chat box and types "/p Pull in five". auto uses the first profile whose
+# match patterns hit a running process: a file name like Wow.exe, or a path part like
+# _forever_/Wow.exe. Custom profiles and character names go under chat_profiles.
+chat_profile: auto
 # chat_profiles:
 #   wow:
 #     names:
 #       thrall: Thrall
 #   ffxiv:
 #     open_key: enter
+#     match: ffxiv_dx11.exe
 #     channels:
 #       party:
 #         command: /p

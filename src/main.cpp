@@ -15,6 +15,7 @@
 #include "tray.h"
 #include "command.h"
 #include "spawn.h"
+#include "processes.h"
 #include <algorithm>
 #include <csignal>
 #include <cstdio>
@@ -54,6 +55,21 @@ static void pressOpenKey(const std::string& key, VirtualKeyboard& keyboard) {
     keyboard.emitCombo(combo, false);
     // A game may open the chat box a frame later and drop keys typed before it appears
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
+}
+
+static bool selectChatProfile(const Config& cfg, ChatProfile& profile) {
+    bool automatic = cfg.chat_profile == kChatProfileAuto;
+    if (!automatic && chatProfileOff(cfg.chat_profile))
+        return false;
+    std::string name = automatic ? autoChatProfile(cfg.chat_profiles, readUserProcesses()) : cfg.chat_profile;
+    if (name.empty())
+        return false;
+    if (!resolveChatProfile(name, cfg.chat_profiles, profile)) {
+        fprintf(stderr, "whisker: unknown chat_profile \"%s\"\n", name.c_str());
+        return false;
+    }
+    fprintf(stderr, "whisker: chat profile %s%s\n", name.c_str(), automatic ? " (auto)" : "");
+    return true;
 }
 
 static void outputText(const std::string& text, OutputMode mode, VirtualKeyboard& keyboard) {
@@ -213,9 +229,7 @@ static void doTranscribe(const PedalConfig& pcfg, AudioCapture& audio, SpeechToT
     std::string text = stt.transcribe(samples);
     if (!text.empty()) {
         ChatProfile profile;
-        bool chat = resolveChatProfile(cfg.chat_profile, cfg.chat_profiles, profile);
-        if (!chat && !cfg.chat_profile.empty())
-            fprintf(stderr, "whisker: unknown chat_profile \"%s\"\n", cfg.chat_profile.c_str());
+        bool chat = selectChatProfile(cfg, profile);
         text = formatTranscript(text, chat ? &profile : nullptr, cfg.dictation_commands, cfg.auto_capitalize);
         fprintf(stderr, "whisker: \"%s\"\n", text.c_str());
         if (has_overlay) overlay.updateText(text);
@@ -254,6 +268,10 @@ static bool comboValid(const char* what, const std::string& combo) {
 static bool chatProfileValid(const Config& cfg) {
     bool ok = true;
     for (const auto& [name, profile] : cfg.chat_profiles) {
+        if (chatProfileReserved(name)) {
+            fprintf(stderr, "whisker: chat_profiles.%s: reserved name\n", name.c_str());
+            ok = false;
+        }
         ok = comboValid(("chat_profiles." + name + ".open_key").c_str(), profile.open_key) && ok;
         for (const auto& ch : profile.channels) {
             if (ch.command.empty() || ch.say.empty()) {
@@ -264,7 +282,7 @@ static bool chatProfileValid(const Config& cfg) {
         }
     }
     ChatProfile profile;
-    if (!cfg.chat_profile.empty() && !resolveChatProfile(cfg.chat_profile, cfg.chat_profiles, profile)) {
+    if (!chatProfileReserved(cfg.chat_profile) && !resolveChatProfile(cfg.chat_profile, cfg.chat_profiles, profile)) {
         fprintf(stderr, "whisker: chat_profile: unknown profile \"%s\"\n", cfg.chat_profile.c_str());
         ok = false;
     }

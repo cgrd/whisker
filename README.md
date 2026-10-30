@@ -76,7 +76,7 @@ If something doesn't work, see [docs/troubleshooting.md](docs/troubleshooting.md
 
 ## Game chat
 
-Set `chat_profile: wow` (or pick it on the settings window's Audio page or in the Decky plugin) to talk in World of Warcraft chat. Whisker presses Enter to open the chat box, then types the message with the channel shortcut your first words name:
+Whisker talks in World of Warcraft chat on its own while the game runs. When you press the trigger, it opens the chat box with Enter, then types the message with the channel shortcut your first words name:
 
 | Say | Types |
 |---|---|
@@ -88,10 +88,14 @@ Set `chat_profile: wow` (or pick it on the settings window's Audio page or in th
 
 Channels: say, yell, emote, party, instance, raid, raid warning, guild, officer, whisper (also "tell"), reply, general (`/1`) and trade (`/2`). "slash" followed by anything types that shortcut, so "slash dance" types `/dance`. Without a channel the text goes to the channel the chat box was last on. Set `submit_key: enter` to send the message too.
 
+`chat_profile` picks the profile: `auto` (the default) uses the first profile whose `match` patterns hit a running process of yours and changes nothing otherwise, `none` turns game chat off, and a profile name such as `wow` always uses that profile. Pick it on the settings window's Audio page or in the Decky plugin too. Whisker only looks at your processes when you press the trigger; it never polls. In auto it checks your profiles in config order, then the built-in ones, and logs the profile it picked (`chat profile wow (auto)`).
+
+A pattern without a slash matches the program's file name, ignoring case, so `Wow.exe` matches World of Warcraft under Proton or Wine. A pattern with `/` or `\` matches part of the full command line, so `_forever_/Wow.exe` tells WoW Forever apart from retail, which are both `Wow.exe`. The built-in `wow` profile matches `Wow.exe`, `WowClassic.exe`, `WowB.exe`, `WowT.exe`, `WowClassicB.exe` and `WowClassicT.exe`.
+
 Character names often come out wrong, so map how you say them to how they're spelled, and add profiles for other games, in `~/.config/pedal-stt/config.yaml`:
 
 ```yaml
-chat_profile: wow
+chat_profile: auto
 chat_profiles:
   wow:
     names:
@@ -99,6 +103,7 @@ chat_profiles:
       jaina proudmoore: Jaina
   ffxiv:
     open_key: enter
+    match: ffxiv_dx11.exe
     channels:
       free_company:
         command: /fc
@@ -109,7 +114,7 @@ chat_profiles:
         target: true
 ```
 
-`open_key` is pressed before typing. `say` lists the spoken lead-ins; the longest one that matches wins. With `target: true` the next word, or a spoken form from `names`, is the recipient. A custom `wow` profile adds to the built-in one, and its channels replace built-in channels with the same name. The Decky plugin and the settings window only pick the profile; edit profiles in the config file.
+`open_key` is pressed before typing. `match` lists the processes that select the profile in auto. `say` lists the spoken lead-ins; the longest one that matches wins. With `target: true` the next word, or a spoken form from `names`, is the recipient. A custom `wow` profile adds to the built-in one (names and match patterns too), and its channels replace built-in channels with the same name. `auto` and `none` can't be profile names. The Decky plugin and the settings window only pick the profile; edit profiles in the config file.
 
 ## Controllers
 

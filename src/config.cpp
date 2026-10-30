@@ -136,6 +136,8 @@ static void parseChatProfileLine(Config& cfg, int level, const std::string& key,
             section = ChatSection::Channels;
         else if (key == "names")
             section = ChatSection::Names;
+        else if (key == "match")
+            profile->match = splitAliases(val);
         else
             std::cerr << "whisker: config: unknown chat profile key '" << key << "'\n";
     } else if (level == 3 && section == ChatSection::Names) {
@@ -355,14 +357,16 @@ void saveConfig(const Config& cfg, const std::string& path) {
         }
     }
 
-    if (!cfg.chat_profile.empty())
-        f << "\nchat_profile: " << cfg.chat_profile << "\n";
+    if (cfg.chat_profile != kChatProfileAuto)
+        f << "\nchat_profile: " << (chatProfileOff(cfg.chat_profile) ? kChatProfileNone : cfg.chat_profile) << "\n";
     if (!cfg.chat_profiles.empty())
         f << "\nchat_profiles:\n";
     for (const auto& [name, profile] : cfg.chat_profiles) {
         f << "  " << name << ":\n";
         if (!profile.open_key.empty())
             f << "    open_key: " << profile.open_key << "\n";
+        if (!profile.match.empty())
+            f << "    match: \"" << joinAliases(profile.match) << "\"\n";
         if (!profile.channels.empty())
             f << "    channels:\n";
         for (const auto& ch : profile.channels) {

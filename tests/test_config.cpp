@@ -151,14 +151,17 @@ static void testSaveLoadRoundTrip() {
 
 static void testParseChatProfiles() {
     Config none = loadConfig(writeFile("nochat.yaml", "submit_key: enter\n"));
-    CHECK_EQ(none.chat_profile, "");
+    CHECK_EQ(none.chat_profile, "auto");
     CHECK(none.chat_profiles.empty());
+    CHECK_EQ(loadConfig(writeFile("chatoff.yaml", "chat_profile: \"\"\n")).chat_profile, "");
+    CHECK_EQ(loadConfig(writeFile("chatnone.yaml", "chat_profile: none\n")).chat_profile, "none");
 
     Config cfg = loadConfig(writeFile("chat.yaml",
         "chat_profile: ffxiv\n"
         "chat_profiles:\n"
         "  ffxiv:\n"
         "    open_key: space\n"
+        "    match: ffxiv_dx11.exe, \"SquareEnix\\FINAL FANTASY XIV\"\n"
         "    channels:\n"
         "      fc:\n"
         "        command: \"/fc\"\n"
@@ -179,6 +182,9 @@ static void testParseChatProfiles() {
     CHECK_EQ(cfg.chat_profiles.size(), 2u);
     const ChatProfile& ff = cfg.chat_profiles["ffxiv"];
     CHECK_EQ(ff.open_key, "space");
+    CHECK_EQ(ff.match.size(), 2u);
+    CHECK_EQ(ff.match[0], "ffxiv_dx11.exe");
+    CHECK_EQ(ff.match[1], "SquareEnix\\FINAL FANTASY XIV");
     CHECK_EQ(ff.channels.size(), 2u);
     CHECK_EQ(ff.channels[0].name, "fc");
     CHECK_EQ(ff.channels[0].command, "/fc");
@@ -201,6 +207,9 @@ static void testParseChatProfiles() {
     CHECK_EQ(out.chat_profiles.size(), 2u);
     const ChatProfile& ff2 = out.chat_profiles["ffxiv"];
     CHECK_EQ(ff2.open_key, "space");
+    CHECK_EQ(ff2.match.size(), 2u);
+    CHECK_EQ(ff2.match[1], "SquareEnix\\FINAL FANTASY XIV");
+    CHECK_EQ(out.chat_profiles.begin()->first, "ffxiv");
     CHECK_EQ(ff2.channels.size(), 2u);
     CHECK_EQ(ff2.channels[0].say.size(), 2u);
     CHECK_EQ(ff2.channels[0].say[0], "free company");
@@ -214,6 +223,11 @@ static void testParseChatProfiles() {
     std::ifstream f(path);
     std::string saved((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
     CHECK(saved.find("chat_profile") == std::string::npos);
+
+    Config off;
+    off.chat_profile = "";
+    saveConfig(off, path);
+    CHECK_EQ(loadConfig(path).chat_profile, "none");
 }
 
 static void testEffectiveSubmitKey() {

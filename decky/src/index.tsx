@@ -71,7 +71,7 @@ const DEFAULTS: Record<string, Value> = {
     trigger_mode: "hold",
     overlay_position: "bottom",
     submit_key: "none",
-    chat_profile: "",
+    chat_profile: "auto",
     history: 10,
     noise_threshold: 0.005,
     overlay: true,
@@ -240,7 +240,7 @@ function WhiskerPanel() {
         setCaptureText(result.button ? `Using ${result.button} on ${result.device}` : result.error ?? "");
     };
 
-    const chatProfileOptions: Option[] = [{ data: "", label: "None" },
+    const chatProfileOptions: Option[] = [{ data: "auto", label: "Automatic" }, { data: "none", label: "None" },
         ...chatProfiles.map((name) => ({ data: name, label: CHAT_PROFILE_LABELS[name] ?? name }))];
 
     const triggerButton = get<string>("trigger_button");
@@ -442,8 +442,10 @@ function WhiskerPanel() {
                 {toggle("auto_capitalize", "Auto-Capitalize", "Capitalize after sentences and newlines")}
                 {toggle("undo_enabled", "Undo", "Quick tap to delete last transcription")}
                 {dropdown("submit_key", "Send After Dictation", submitKeyOptions, "Key pressed after the text is typed")}
-                {dropdown("chat_profile", "Game Chat", chatProfileOptions,
-                    "Opens the chat box and turns \"party, ...\" into /p. Profiles are set in config.yaml")}
+                {row(<DropdownItem label="Game Chat" rgOptions={chatProfileOptions}
+                    description={"Opens the chat box and turns \"party, ...\" into /p. Automatic picks the profile of the running game"}
+                    selectedOption={get<string>("chat_profile") || "none"}
+                    onChange={(o) => update("chat_profile", o.data)} />)}
                 {slider("recording_timeout", "Recording Timeout", 0, 120, 5, "Auto-stop after N seconds (0 = no limit)")}
             </PanelSection>
             {PEDALS.map(pedalSection)}

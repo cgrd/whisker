@@ -3,6 +3,21 @@
 #include <algorithm>
 #include <cctype>
 
+ChatProfile& ChatProfiles::operator[](const std::string& name) {
+    for (auto& [n, profile] : entries_)
+        if (n == name)
+            return profile;
+    entries_.emplace_back(name, ChatProfile{});
+    return entries_.back().second;
+}
+
+const ChatProfile* ChatProfiles::find(const std::string& name) const {
+    for (const auto& [n, profile] : entries_)
+        if (n == name)
+            return &profile;
+    return nullptr;
+}
+
 static const ChatProfiles& builtinProfiles() {
     static const ChatProfiles m = {
         {"wow", {"enter", {
@@ -19,7 +34,7 @@ static const ChatProfiles& builtinProfiles() {
             {"reply", "/r", {"reply"}},
             {"general", "/1", {"general", "general chat"}},
             {"trade", "/2", {"trade", "trade chat"}},
-        }, {}}},
+        }, {}, {"Wow.exe", "WowClassic.exe", "WowB.exe", "WowT.exe", "WowClassicB.exe", "WowClassicT.exe"}}},
     };
     return m;
 }
@@ -29,7 +44,7 @@ std::vector<std::string> chatProfileNames(const ChatProfiles& custom) {
     for (const auto& [name, _] : builtinProfiles())
         names.push_back(name);
     for (const auto& [name, _] : custom)
-        if (!builtinProfiles().count(name))
+        if (!builtinProfiles().find(name))
             names.push_back(name);
     return names;
 }
@@ -46,19 +61,28 @@ static void mergeProfile(ChatProfile& base, const ChatProfile& extra) {
             base.channels.push_back(ch);
     }
     base.names.insert(base.names.end(), extra.names.begin(), extra.names.end());
+    base.match.insert(base.match.end(), extra.match.begin(), extra.match.end());
 }
 
 bool resolveChatProfile(const std::string& name, const ChatProfiles& custom, ChatProfile& out) {
-    if (name.empty())
+    if (chatProfileReserved(name))
         return false;
-    auto builtin = builtinProfiles().find(name);
-    auto user = custom.find(name);
-    if (builtin == builtinProfiles().end() && user == custom.end())
+    const ChatProfile* builtin = builtinProfiles().find(name);
+    const ChatProfile* user = custom.find(name);
+    if (!builtin && !user)
         return false;
-    out = builtin != builtinProfiles().end() ? builtin->second : ChatProfile{};
-    if (user != custom.end())
-        mergeProfile(out, user->second);
+    out = builtin ? *builtin : ChatProfile{};
+    if (user)
+        mergeProfile(out, *user);
     return true;
+}
+
+bool chatProfileOff(const std::string& setting) {
+    return setting.empty() || setting == kChatProfileNone;
+}
+
+bool chatProfileReserved(const std::string& name) {
+    return chatProfileOff(name) || name == kChatProfileAuto;
 }
 
 static bool isAlnum(char c) {
@@ -198,4 +222,50 @@ ChatLine splitChatLine(const ChatProfile& profile, const std::string& text) {
     while (used < tokens.size() && tokens[used].norm.empty())
         ++used;
     return {prefix, used < tokens.size() ? text.substr(tokens[used].start) : ""};
+}
+
+static std::string pathKey(std::string s) {
+    std::replace(s.begin(), s.end(), '\\', '/');
+    return toLower(s);
+}
+
+static std::string exeName(const ProcessInfo& proc) {
+    if (!proc.argv.empty()) {
+        const std::string& exe = proc.argv[0];
+        size_t slash = exe.find_last_of("/\\");
+        std::string base = slash == std::string::npos ? exe : exe.substr(slash + 1);
+        if (!base.empty())
+            return base;
+    }
+    return proc.comm;
+}
+
+bool processMatches(const ProcessInfo& proc, const std::string& pattern) {
+    if (pattern.empty())
+        return false;
+    if (pattern.find_first_of("/\\") == std::string::npos)
+        return toLower(exeName(proc)) == toLower(pattern);
+    std::string cmdline;
+    for (const auto& arg : proc.argv)
+        cmdline += (cmdline.empty() ? "" : " ") + arg;
+    return pathKey(cmdline).find(pathKey(pattern)) != std::string::npos;
+}
+
+std::string autoChatProfile(const ChatProfiles& custom, const std::vector<ProcessInfo>& procs) {
+    std::vector<std::string> order;
+    for (const auto& [name, _] : custom)
+        order.push_back(name);
+    for (const auto& [name, _] : builtinProfiles())
+        if (!custom.find(name))
+            order.push_back(name);
+    for (const auto& name : order) {
+        ChatProfile profile;
+        if (!resolveChatProfile(name, custom, profile))
+            continue;
+        for (const auto& pattern : profile.match)
+            for (const auto& proc : procs)
+                if (processMatches(proc, pattern))
+                    return name;
+    }
+    return "";
 }
