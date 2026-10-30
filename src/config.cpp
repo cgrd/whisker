@@ -67,6 +67,36 @@ static int pedalIndex(const std::string& name) {
     return -1;
 }
 
+static bool parseBool(const std::string& val) {
+    return val == "true" || val == "yes" || val == "on";
+}
+
+static std::vector<std::string> splitAliases(std::string list) {
+    if (list.size() >= 2 && list.front() == '[' && list.back() == ']')
+        list = list.substr(1, list.size() - 2);
+    std::vector<std::string> aliases;
+    size_t start = 0;
+    while (start <= list.size()) {
+        size_t comma = list.find(',', start);
+        if (comma == std::string::npos) comma = list.size();
+        std::string alias = stripQuotes(trim(list.substr(start, comma - start)));
+        if (!alias.empty())
+            aliases.push_back(alias);
+        start = comma + 1;
+    }
+    return aliases;
+}
+
+static std::string joinAliases(const std::vector<std::string>& aliases) {
+    std::string out;
+    for (const auto& a : aliases)
+        out += (out.empty() ? "" : ", ") + a;
+    return out;
+}
+
+enum class Section { None, Pedals, ChatProfiles };
+enum class ChatSection { None, Channels, Names };
+
 static Config defaultConfig() {
     Config cfg;
     cfg.pedals[1].action = PedalAction::Transcribe;
@@ -89,6 +119,42 @@ std::string modelsDir() {
     return dir;
 }
 
+static void parseChatProfileLine(Config& cfg, int level, const std::string& key, const std::string& val,
+                                 ChatProfile*& profile, ChatSection& section, ChatChannel*& channel) {
+    if (level == 1) {
+        profile = &cfg.chat_profiles[key];
+        section = ChatSection::None;
+        channel = nullptr;
+    } else if (!profile) {
+        return;
+    } else if (level == 2) {
+        section = ChatSection::None;
+        channel = nullptr;
+        if (key == "open_key")
+            profile->open_key = val;
+        else if (key == "channels")
+            section = ChatSection::Channels;
+        else if (key == "names")
+            section = ChatSection::Names;
+        else
+            std::cerr << "whisker: config: unknown chat profile key '" << key << "'\n";
+    } else if (level == 3 && section == ChatSection::Names) {
+        profile->names.emplace_back(key, val);
+    } else if (level == 3 && section == ChatSection::Channels) {
+        profile->channels.push_back({key, "", {}, false});
+        channel = &profile->channels.back();
+    } else if (level == 4 && channel) {
+        if (key == "command")
+            channel->command = val;
+        else if (key == "say")
+            channel->say = splitAliases(val);
+        else if (key == "target")
+            channel->target = parseBool(val);
+        else
+            std::cerr << "whisker: config: unknown chat channel key '" << key << "'\n";
+    }
+}
+
 Config loadConfig(const std::string& path) {
     std::string expanded = expandTilde(path);
     std::ifstream file(expanded);
@@ -96,8 +162,11 @@ Config loadConfig(const std::string& path) {
         return defaultConfig();
 
     Config cfg;
+    Section section = Section::None;
     int current_pedal = -1;
-    bool in_pedals = false;
+    ChatProfile* profile = nullptr;
+    ChatSection chat_section = ChatSection::None;
+    ChatChannel* channel = nullptr;
 
     std::string line;
     while (std::getline(file, line)) {
@@ -116,8 +185,9 @@ Config loadConfig(const std::string& path) {
         val = stripQuotes(val);
 
         if (level == 0) {
-            in_pedals = false;
+            section = Section::None;
             current_pedal = -1;
+            profile = nullptr;
 
             if (key == "model") {
                 cfg.model_path = expandTilde(val);
@@ -156,11 +226,17 @@ Config loadConfig(const std::string& path) {
             } else if (key == "recording_timeout") {
                 cfg.recording_timeout = std::stoi(val);
             } else if (key == "pedals") {
-                in_pedals = true;
+                section = Section::Pedals;
+            } else if (key == "chat_profile") {
+                cfg.chat_profile = val;
+            } else if (key == "chat_profiles") {
+                section = Section::ChatProfiles;
             } else {
                 std::cerr << "whisker: config: unknown key '" << key << "'\n";
             }
-        } else if (level == 1 && in_pedals) {
+        } else if (section == Section::ChatProfiles) {
+            parseChatProfileLine(cfg, level, key, val, profile, chat_section, channel);
+        } else if (level == 1 && section == Section::Pedals) {
             int idx = pedalIndex(key);
             if (idx >= 0) {
                 current_pedal = idx;
@@ -168,7 +244,7 @@ Config loadConfig(const std::string& path) {
                 std::cerr << "whisker: config: unknown pedal '" << key << "'\n";
                 current_pedal = -1;
             }
-        } else if (level == 2 && in_pedals && current_pedal >= 0) {
+        } else if (level == 2 && section == Section::Pedals && current_pedal >= 0) {
             auto& pedal = cfg.pedals[current_pedal];
             if (key == "action") {
                 pedal.action = parseAction(val);
@@ -277,6 +353,29 @@ void saveConfig(const Config& cfg, const std::string& path) {
             if (!p.exec_release.empty())
                 f << "    exec_release: \"" << p.exec_release << "\"\n";
         }
+    }
+
+    if (!cfg.chat_profile.empty())
+        f << "\nchat_profile: " << cfg.chat_profile << "\n";
+    if (!cfg.chat_profiles.empty())
+        f << "\nchat_profiles:\n";
+    for (const auto& [name, profile] : cfg.chat_profiles) {
+        f << "  " << name << ":\n";
+        if (!profile.open_key.empty())
+            f << "    open_key: " << profile.open_key << "\n";
+        if (!profile.channels.empty())
+            f << "    channels:\n";
+        for (const auto& ch : profile.channels) {
+            f << "      " << ch.name << ":\n";
+            f << "        command: \"" << ch.command << "\"\n";
+            f << "        say: \"" << joinAliases(ch.say) << "\"\n";
+            if (ch.target)
+                f << "        target: true\n";
+        }
+        if (!profile.names.empty())
+            f << "    names:\n";
+        for (const auto& [spoken, name] : profile.names)
+            f << "      " << spoken << ": \"" << name << "\"\n";
     }
 }
 

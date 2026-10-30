@@ -589,6 +589,20 @@ static void submitKeyCombo(const char* label, std::string& value) {
         value = keys[idx];
 }
 
+static void chatProfileCombo(const char* label, Config& cfg) {
+    std::vector<std::string> names = chatProfileNames(cfg.chat_profiles);
+    names.insert(names.begin(), "none");
+    std::vector<const char*> items;
+    int idx = 0;
+    for (size_t i = 0; i < names.size(); ++i) {
+        items.push_back(names[i].c_str());
+        if (names[i] == cfg.chat_profile) idx = static_cast<int>(i);
+    }
+    ImGui::SetNextItemWidth(-1);
+    if (combo(label, &idx, items.data(), static_cast<int>(items.size())))
+        cfg.chat_profile = idx == 0 ? "" : names[idx];
+}
+
 static std::string autostartPath() {
     const char* home = std::getenv("HOME");
     if (!home) return {};
@@ -656,6 +670,8 @@ static void drawAudioTab(Config& cfg, std::vector<AudioSource>& sources, int& se
     ImGui::Checkbox("Show tray icon", &cfg.tray);
     ImGui::TextDisabled("Send after dictation");
     submitKeyCombo("##submit_key", cfg.submit_key);
+    ImGui::TextDisabled("Game chat profile");
+    chatProfileCombo("##chat_profile", cfg);
 
     ImGui::Spacing();
     ImGui::Separator();

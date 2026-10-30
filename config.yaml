@@ -18,6 +18,27 @@ trigger_button: L5
 # Key pressed after dictated text is typed: none, enter, tab
 submit_key: none
 
+# Game chat profile: empty for none, or wow. "Party, pull in five" opens the chat box
+# and types "/p Pull in five". Custom profiles and character names go under chat_profiles.
+chat_profile: ""
+# chat_profiles:
+#   wow:
+#     names:
+#       thrall: Thrall
+#   ffxiv:
+#     open_key: enter
+#     channels:
+#       party:
+#         command: /p
+#         say: party, party chat
+#       free_company:
+#         command: /fc
+#         say: free company, fc
+#       tell:
+#         command: /tell
+#         say: tell, whisper
+#         target: true
+
 pedals:
   left:
     action: key

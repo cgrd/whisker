@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #pragma once
+#include "chat_profile.h"
 #include <array>
 #include <string>
 
@@ -37,6 +38,8 @@ struct Config {
     bool undo_enabled = true;
     int recording_timeout = 30;
     std::array<PedalConfig, 3> pedals; // [0]=left, [1]=center, [2]=right
+    std::string chat_profile;
+    ChatProfiles chat_profiles;
 };
 
 Config loadConfig(const std::string& path);

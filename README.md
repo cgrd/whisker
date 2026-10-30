@@ -74,6 +74,43 @@ Change settings from the Whisker entry in your app menu or tray icon, or from De
 
 If something doesn't work, see [docs/troubleshooting.md](docs/troubleshooting.md).
 
+## Game chat
+
+Set `chat_profile: wow` (or pick it on the settings window's Audio page or in the Decky plugin) to talk in World of Warcraft chat. Whisker presses Enter to open the chat box, then types the message with the channel shortcut your first words name:
+
+| Say | Types |
+|---|---|
+| "party, pull in five" | `/p Pull in five` |
+| "guild chat anyone up for a raid" | `/g Anyone up for a raid` |
+| "raid warning stack up" | `/rw Stack up` |
+| "whisper Thrall need a summon" | `/w Thrall Need a summon` |
+| "slash p ready" | `/p Ready` |
+
+Channels: say, yell, emote, party, instance, raid, raid warning, guild, officer, whisper (also "tell"), reply, general (`/1`) and trade (`/2`). "slash" followed by anything types that shortcut, so "slash dance" types `/dance`. Without a channel the text goes to the channel the chat box was last on. Set `submit_key: enter` to send the message too.
+
+Character names often come out wrong, so map how you say them to how they're spelled, and add profiles for other games, in `~/.config/pedal-stt/config.yaml`:
+
+```yaml
+chat_profile: wow
+chat_profiles:
+  wow:
+    names:
+      thrall: Thrall
+      jaina proudmoore: Jaina
+  ffxiv:
+    open_key: enter
+    channels:
+      free_company:
+        command: /fc
+        say: free company, fc
+      tell:
+        command: /tell
+        say: tell, whisper
+        target: true
+```
+
+`open_key` is pressed before typing. `say` lists the spoken lead-ins; the longest one that matches wins. With `target: true` the next word, or a spoken form from `names`, is the recipient. A custom `wow` profile adds to the built-in one, and its channels replace built-in channels with the same name. The Decky plugin and the settings window only pick the profile; edit profiles in the config file.
+
 ## Controllers
 
 `trigger_button` works on every connected controller, including ones you turn on after Whisker starts. Set it to one button or a chord of buttons joined with `+`:

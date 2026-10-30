@@ -7,7 +7,8 @@ function(whisker_test name)
 endfunction()
 
 whisker_test(test_config ${CMAKE_SOURCE_DIR}/src/config.cpp)
-whisker_test(test_dictation ${CMAKE_SOURCE_DIR}/src/dictation.cpp)
+whisker_test(test_dictation ${CMAKE_SOURCE_DIR}/src/dictation.cpp ${CMAKE_SOURCE_DIR}/src/chat_profile.cpp)
+whisker_test(test_chat_profile ${CMAKE_SOURCE_DIR}/src/chat_profile.cpp)
 whisker_test(test_buttons ${CMAKE_SOURCE_DIR}/src/buttons.cpp)
 whisker_test(test_haptic ${CMAKE_SOURCE_DIR}/src/haptic.cpp)
 whisker_test(test_keyboard ${CMAKE_SOURCE_DIR}/src/keyboard.cpp)
@@ -37,6 +38,8 @@ add_test(NAME cli_check_bad_config COMMAND whisker --check-config -c ${CMAKE_CUR
 set_tests_properties(cli_check_bad_config PROPERTIES WILL_FAIL TRUE)
 add_test(NAME cli_check_bad_button COMMAND whisker --check-config -c ${CMAKE_CURRENT_SOURCE_DIR}/data/bad-button.yaml)
 set_tests_properties(cli_check_bad_button PROPERTIES WILL_FAIL TRUE)
+add_test(NAME cli_check_bad_chat_profile COMMAND whisker --check-config -c ${CMAKE_CURRENT_SOURCE_DIR}/data/bad-chat-profile.yaml)
+set_tests_properties(cli_check_bad_chat_profile PROPERTIES WILL_FAIL TRUE)
 
 whisker_test(test_models ${CMAKE_SOURCE_DIR}/src/models.cpp ${CMAKE_SOURCE_DIR}/src/sha256.cpp)
 target_include_directories(test_models PRIVATE ${CMAKE_BINARY_DIR})
@@ -55,6 +58,7 @@ whisker_test(test_settings
     ${CMAKE_SOURCE_DIR}/src/trigger_capture.cpp
     ${CMAKE_SOURCE_DIR}/src/buttons.cpp
     ${CMAKE_SOURCE_DIR}/src/config.cpp
+    ${CMAKE_SOURCE_DIR}/src/chat_profile.cpp
     ${CMAKE_SOURCE_DIR}/src/models.cpp
     ${CMAKE_SOURCE_DIR}/src/sha256.cpp)
 target_include_directories(test_settings PRIVATE ${PIPEWIRE_INCLUDE_DIRS} ${SDL2_INCLUDE_DIRS})

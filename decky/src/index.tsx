@@ -60,6 +60,7 @@ const getModelStatus = callable<[], ModelStatus>("get_model_status");
 const downloadModel = callable<[file: string], boolean>("download_model");
 const cancelDownload = callable<[], void>("cancel_download");
 const captureButton = callable<[], CaptureResult>("capture_button");
+const getChatProfiles = callable<[], string[]>("get_chat_profiles");
 
 const DEFAULTS: Record<string, Value> = {
     model: "",
@@ -70,6 +71,7 @@ const DEFAULTS: Record<string, Value> = {
     trigger_mode: "hold",
     overlay_position: "bottom",
     submit_key: "none",
+    chat_profile: "",
     history: 10,
     noise_threshold: 0.005,
     overlay: true,
@@ -109,6 +111,7 @@ const buttonOptions = options([
     ["L1+R1", "L1 + R1"], ["L3+R3", "L3 + R3 (Both Stick Clicks)"],
 ]);
 const backendOptions = options([["vulkan", "Vulkan (GPU)"], ["cpu", "CPU"]]);
+const CHAT_PROFILE_LABELS: Record<string, string> = { wow: "World of Warcraft" };
 const actionOptions = options([["none", "None"], ["key", "Key"], ["transcribe", "Transcribe"]]);
 // Commands can only be set in config.yaml; the plugin just shows that one is configured
 const execActionOption: Option = { data: "exec", label: "Run Command (config file)" };
@@ -144,6 +147,7 @@ function WhiskerPanel() {
     const [models, setModels] = useState<string[]>([]);
     const [knownModels, setKnownModels] = useState<KnownModels | null>(null);
     const [audioSources, setAudioSources] = useState<AudioSource[]>([]);
+    const [chatProfiles, setChatProfiles] = useState<string[]>([]);
     const [config, setConfig] = useState<Config>({});
     const [captureText, setCaptureText] = useState("");
     const mountedRef = useRef(true);
@@ -167,6 +171,10 @@ function WhiskerPanel() {
         (async () => {
             const s = await getAudioSources();
             if (mountedRef.current) setAudioSources(s);
+        })();
+        (async () => {
+            const p = await getChatProfiles();
+            if (mountedRef.current) setChatProfiles(p);
         })();
         (async () => {
             const k = await getKnownModels();
@@ -231,6 +239,9 @@ function WhiskerPanel() {
         if (!mountedRef.current) return;
         setCaptureText(result.button ? `Using ${result.button} on ${result.device}` : result.error ?? "");
     };
+
+    const chatProfileOptions: Option[] = [{ data: "", label: "None" },
+        ...chatProfiles.map((name) => ({ data: name, label: CHAT_PROFILE_LABELS[name] ?? name }))];
 
     const triggerButton = get<string>("trigger_button");
     const triggerOptions = buttonOptions.some((o) => o.data === triggerButton)
@@ -431,6 +442,8 @@ function WhiskerPanel() {
                 {toggle("auto_capitalize", "Auto-Capitalize", "Capitalize after sentences and newlines")}
                 {toggle("undo_enabled", "Undo", "Quick tap to delete last transcription")}
                 {dropdown("submit_key", "Send After Dictation", submitKeyOptions, "Key pressed after the text is typed")}
+                {dropdown("chat_profile", "Game Chat", chatProfileOptions,
+                    "Opens the chat box and turns \"party, ...\" into /p. Profiles are set in config.yaml")}
                 {slider("recording_timeout", "Recording Timeout", 0, 120, 5, "Auto-stop after N seconds (0 = no limit)")}
             </PanelSection>
             {PEDALS.map(pedalSection)}

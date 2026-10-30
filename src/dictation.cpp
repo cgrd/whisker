@@ -101,3 +101,12 @@ std::string autoCapitalize(const std::string& text) {
     }
     return out;
 }
+
+std::string formatTranscript(const std::string& text, const ChatProfile* chat, bool commands, bool capitalize) {
+    ChatLine line = chat ? splitChatLine(*chat, text) : ChatLine{"", text};
+    if (commands)
+        line.body = processDictation(line.body);
+    if (capitalize)
+        line.body = autoCapitalize(line.body);
+    return line.prefix + line.body;
+}
