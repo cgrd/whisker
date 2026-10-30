@@ -230,6 +230,7 @@ static void doTranscribe(const PedalConfig& pcfg, AudioCapture& audio, SpeechToT
     if (!text.empty()) {
         ChatProfile profile;
         bool chat = selectChatProfile(cfg, profile);
+        bool switch_only = chat && chatSwitchOnly(profile, text);
         text = formatTranscript(text, chat ? &profile : nullptr, cfg.dictation_commands, cfg.auto_capitalize);
         fprintf(stderr, "whisker: \"%s\"\n", text.c_str());
         if (has_overlay) overlay.updateText(text);
@@ -237,7 +238,7 @@ static void doTranscribe(const PedalConfig& pcfg, AudioCapture& audio, SpeechToT
             pressOpenKey(profile.open_key, keyboard);
         outputText(text, pcfg.output, keyboard);
         last_typed_len = static_cast<int>(text.size());
-        std::string submit = effectiveSubmitKey(cfg, pcfg, text);
+        std::string submit = switch_only ? "" : effectiveSubmitKey(cfg, pcfg, text);
         if (!submit.empty()) {
             auto combo = VirtualKeyboard::parseCombo(submit);
             if (!combo.empty()) {

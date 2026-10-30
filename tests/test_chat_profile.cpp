@@ -63,6 +63,18 @@ static void testSlash() {
     CHECK_EQ(chat(p, "slash"), "slash");
 }
 
+static void testSwitchOnly() {
+    ChatProfile p = wow();
+    CHECK(chatSwitchOnly(p, "party"));
+    CHECK(chatSwitchOnly(p, "Guild chat."));
+    CHECK(chatSwitchOnly(p, "slash p"));
+    CHECK(chatSwitchOnly(p, "whisper Thrall"));
+    CHECK(!chatSwitchOnly(p, "party, pull in five"));
+    CHECK(!chatSwitchOnly(p, "slash dance"));
+    CHECK(!chatSwitchOnly(p, "hello"));
+    CHECK(!chatSwitchOnly(p, ""));
+}
+
 static void testWhisper() {
     ChatProfile p = wow();
     CHECK_EQ(chat(p, "whisper Thrall, need a summon"), "/w Thrall need a summon");
@@ -200,6 +212,7 @@ int main() {
     testCaseAndPunctuation();
     testLongestAliasWins();
     testSlash();
+    testSwitchOnly();
     testWhisper();
     testNoMatchPassesThrough();
     testResolve();

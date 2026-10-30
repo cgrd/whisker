@@ -86,7 +86,7 @@ Whisker talks in World of Warcraft chat on its own while the game runs. When you
 | "whisper Thrall need a summon" | `/w Thrall Need a summon` |
 | "slash p ready" | `/p Ready` |
 
-Channels: say, yell, emote, party, instance, raid, raid warning, guild, officer, whisper (also "tell"), reply, general (`/1`) and trade (`/2`). "slash" followed by anything types that shortcut, so "slash dance" types `/dance`. Without a channel the text goes to the channel the chat box was last on. Set `submit_key: enter` to send the message too.
+Channels: say, yell, emote, party, instance, raid, raid warning, guild, officer, whisper (also "tell"), reply, general (`/1`) and trade (`/2`). "slash" followed by anything types that shortcut, so "slash dance" types `/dance`. Without a channel the text goes to the channel the chat box was last on. Set `submit_key: enter` to send the message too. A channel on its own ("party") only switches the open chat box and never submits, so you can dictate the message next.
 
 `chat_profile` picks the profile: `auto` (the default) uses the first profile whose `match` patterns hit a running process of yours and changes nothing otherwise, `none` turns game chat off, and a profile name such as `wow` always uses that profile. Pick it on the settings window's Audio page or in the Decky plugin too. Whisker only looks at your processes when you press the trigger; it never polls. In auto it checks your profiles in config order, then the built-in ones, and logs the profile it picked (`chat profile wow (auto)`).
 

@@ -221,7 +221,12 @@ ChatLine splitChatLine(const ChatProfile& profile, const std::string& text) {
     }
     while (used < tokens.size() && tokens[used].norm.empty())
         ++used;
-    return {prefix, used < tokens.size() ? text.substr(tokens[used].start) : ""};
+    return {prefix, used < tokens.size() ? text.substr(tokens[used].start) : "", channel != nullptr};
+}
+
+bool chatSwitchOnly(const ChatProfile& profile, const std::string& text) {
+    ChatLine line = splitChatLine(profile, text);
+    return line.channel && line.body.empty();
 }
 
 static std::string pathKey(std::string s) {

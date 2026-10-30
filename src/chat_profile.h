@@ -48,6 +48,7 @@ inline const char* kChatProfileNone = "none";
 struct ChatLine {
     std::string prefix;
     std::string body;
+    bool channel = false;
 };
 
 std::vector<std::string> chatProfileNames(const ChatProfiles& custom);
@@ -59,3 +60,5 @@ bool processMatches(const ProcessInfo& proc, const std::string& pattern);
 // Custom profiles in config order, then the remaining built-in ones; empty when none matches.
 std::string autoChatProfile(const ChatProfiles& custom, const std::vector<ProcessInfo>& procs);
 ChatLine splitChatLine(const ChatProfile& profile, const std::string& text);
+// A channel shortcut with no message only switches the chat box, so submitting would close it.
+bool chatSwitchOnly(const ChatProfile& profile, const std::string& text);
