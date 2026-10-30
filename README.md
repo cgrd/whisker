@@ -83,7 +83,7 @@ trigger_button: L5      # lower left back button
 trigger_button: L3+R3   # both stick clicks, for controllers without back buttons
 ```
 
-A chord starts recording when all its buttons are down on the same controller and stops when any of them comes up. Button names: `A`, `B`, `X`, `Y`, `L1`, `R1`, `L2`, `R2`, `L3`, `R3`, `L4`, `L5`, `R4`, `R5`, `select`, `start`, `guide`, `up`, `down`, `left`, `right`. `L4`/`R4` are the upper back buttons and `L5`/`R5` the lower ones, the same names Steam uses.
+A chord starts recording when all its buttons are down on the same controller and stops when any of them comes up. Button names: `A`, `B`, `X`, `Y`, `L1`, `R1`, `L2`, `R2`, `L3`, `R3`, `L4`, `L5`, `R4`, `R5`, `select`, `start`, `guide`, `assistant`, `capture`, `up`, `down`, `left`, `right`. `L4`/`R4` are the upper back buttons and `L5`/`R5` the lower ones, the same names Steam uses. `assistant` and `capture` are the two middle buttons on the Google Stadia controller, which no game binds.
 
 The easiest way to pick one is "Press the button you want" on the settings window's Triggers page or in the Decky plugin: press and release the button or chord on any controller and Whisker saves it.
 
@@ -94,6 +94,7 @@ The easiest way to pick one is "Press the button you want" on the settings windo
 | Steam Controller (2026) over Bluetooth or the Steam Machine receiver | hidraw | untested |
 | Steam Controller (2015), wired or dongle | hidraw | untested, no rumble |
 | Xbox, PlayStation and other gamepads with a Linux driver | evdev | untested; back paddles need Linux 6.17 or newer, except Xbox Elite |
+| Google Stadia controller, USB or Bluetooth | evdev | untested; Assistant and Capture buttons as `assistant` and `capture` |
 
 The recording start and stop rumble goes to the controller you pressed. To add a controller, see [docs/controllers.md](docs/controllers.md).
 

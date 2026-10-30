@@ -10,7 +10,9 @@ history: 50
 # Show waveform + live transcription overlay (requires Wayland compositor with wlr-layer-shell)
 overlay: true
 
-# Controller button that records while held, on any controller: a button like L5 or a chord like L3+R3
+# Controller button that records while held, on any controller: a button like L5 or a chord like L3+R3.
+# Names: A B X Y L1 R1 L2 R2 L3 R3 L4 L5 R4 R5 select start guide assistant capture up down left right
+# (assistant and capture are the Stadia controller's middle buttons)
 trigger_button: L5
 
 # Key pressed after dictated text is typed: none, enter, tab

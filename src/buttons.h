@@ -28,6 +28,8 @@ enum Button : uint32_t {
     kButtonDown = 1u << 18,
     kButtonLeft = 1u << 19,
     kButtonRight = 1u << 20,
+    kButtonAssistant = 1u << 21,
+    kButtonCapture = 1u << 22,
 };
 
 using ButtonSet = uint32_t;

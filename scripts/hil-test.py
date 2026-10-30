@@ -3,7 +3,7 @@
 """Drives Whisker with virtual controllers and checks what it does.
 
 Creates a fake 2026 Steam Controller (28DE:1302) through /dev/uhid and an Xbox-style pad
-through /dev/uinput, runs its own Whisker instance with a private config and runtime
+and a Stadia-style pad through /dev/uinput, runs its own Whisker instance with a private config and runtime
 directory, and checks the log for opened devices, trigger presses and releases, chords,
 button capture over the socket and through the Decky backend, hotplug and haptics.
 The user's config is never written; the test only checks it's unchanged. It needs write
@@ -69,7 +69,8 @@ UI_DEV_SETUP, UI_ABS_SETUP = 0x405C5503, 0x401C5504
 UI_SET_EVBIT, UI_SET_KEYBIT, UI_SET_ABSBIT = 0x40045564, 0x40045565, 0x40045567
 EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
 BTN = {"A": 0x130, "B": 0x131, "X": 0x134, "Y": 0x133, "L1": 0x136, "R1": 0x137,
-       "L3": 0x13D, "R3": 0x13E, "L4": 0x224, "R4": 0x225, "L5": 0x226, "R5": 0x227}
+       "L3": 0x13D, "R3": 0x13E, "L4": 0x224, "R4": 0x225, "L5": 0x226, "R5": 0x227,
+       "TRIGGER_HAPPY1": 0x2C0, "TRIGGER_HAPPY2": 0x2C1}
 
 results = []
 
@@ -140,10 +141,10 @@ class FakeSteamController:
             os.close(self.fd)
 
 
-class FakeXboxPad:
-    """An Xbox-style pad over uinput with back paddles on BTN_GRIP*."""
+class FakePad:
+    """A gamepad over uinput with every code in BTN, as the given vendor."""
 
-    def __init__(self):
+    def __init__(self, vendor, product, name):
         self.fd = os.open("/dev/uinput", os.O_WRONLY | os.O_NONBLOCK)
         fcntl.ioctl(self.fd, UI_SET_EVBIT, EV_KEY)
         fcntl.ioctl(self.fd, UI_SET_EVBIT, EV_ABS)
@@ -151,7 +152,7 @@ class FakeXboxPad:
             fcntl.ioctl(self.fd, UI_SET_KEYBIT, code)
         fcntl.ioctl(self.fd, UI_SET_ABSBIT, 0)
         fcntl.ioctl(self.fd, UI_ABS_SETUP, struct.pack("<HHiiiiii", 0, 0, 0, -32768, 32767, 16, 128, 0))
-        setup = struct.pack("<HHHH80sI", BUS_USB, 0x045E, 0x0B12, 1, b"Whisker HIL Xbox pad", 0)
+        setup = struct.pack("<HHHH80sI", BUS_USB, vendor, product, 1, name.encode(), 0)
         fcntl.ioctl(self.fd, UI_DEV_SETUP, setup)
         fcntl.ioctl(self.fd, UI_DEV_CREATE)
 
@@ -162,6 +163,14 @@ class FakeXboxPad:
     def destroy(self):
         fcntl.ioctl(self.fd, UI_DEV_DESTROY)
         os.close(self.fd)
+
+
+def xbox_pad():
+    return FakePad(0x045E, 0x0B12, "Whisker HIL Xbox pad")
+
+
+def stadia_pad():
+    return FakePad(0x18D1, 0x9400, "Whisker HIL Stadia pad")
 
 
 class Whisker:
@@ -364,7 +373,7 @@ def test_xbox_pad(whisker, pad, hotplug=True):
     up = wait_trigger(whisker, "up", path, since)
     record("uinput: unplug mid-hold releases the trigger", bool(down and up))
     since = whisker.mark()
-    pad = FakeXboxPad()
+    pad = xbox_pad()
     record("uinput: replugged pad is reopened", device_path(whisker, r"Whisker HIL Xbox pad", since) is not None)
     return pad
 
@@ -410,6 +419,32 @@ def test_chords(whisker, pad, fake):
         up = wait_trigger(whisker, "up", path, since)
         fake.send()
         record("uhid: L3+R3 chord fires only with both held", bool(not early and down and up))
+
+
+def test_stadia(whisker, stadia, pad):
+    path = device_path(whisker, r"Whisker HIL Stadia pad", 0)
+    record("uinput: Stadia-style pad opened", path is not None, path or "")
+    if not path:
+        return
+    since = whisker.mark()
+    stadia.key("TRIGGER_HAPPY2", 1)
+    down = wait_trigger(whisker, "down", path, since)
+    time.sleep(0.3)
+    stadia.key("TRIGGER_HAPPY2", 0)
+    up = wait_trigger(whisker, "up", path, since)
+    record("uinput: Stadia BTN_TRIGGER_HAPPY2 (capture) press and release", bool(down and up))
+    if pad:
+        since = whisker.mark()
+        tap(lambda: pad.key("TRIGGER_HAPPY2", 1), lambda: pad.key("TRIGGER_HAPPY2", 0))
+        time.sleep(0.5)
+        ignored = not whisker.seen("controller: trigger", since)
+        record("uinput: BTN_TRIGGER_HAPPY2 on a non-Google pad is ignored", ignored)
+    try:
+        reply = capture_over_socket(whisker.socket_path, lambda: tap(lambda: stadia.key("TRIGGER_HAPPY1", 1),
+                                                                    lambda: stadia.key("TRIGGER_HAPPY1", 0)))
+    except OSError as e:
+        reply = f"error {e}"
+    record("capture over the socket (Stadia assistant)", reply.startswith("assistant "), repr(reply))
 
 
 def find_puck():
@@ -522,7 +557,7 @@ def main():
         restart_service = user_systemctl(args.user, "is-active", "--quiet", "whisker").returncode == 0
         user_systemctl(args.user, "stop", "whisker")
 
-    fake = pad = None
+    fake = pad = stadia = None
     try:
         if not args.no_uhid:
             try:
@@ -530,9 +565,13 @@ def main():
             except OSError as e:
                 record("uhid: create fake 2026 Steam Controller", False, str(e))
         try:
-            pad = FakeXboxPad()
+            pad = xbox_pad()
         except OSError as e:
             record("uinput: create Xbox-style pad", False, str(e))
+        try:
+            stadia = stadia_pad()
+        except OSError as e:
+            record("uinput: create Stadia-style pad", False, str(e))
         time.sleep(1)
 
         with tempfile.TemporaryDirectory(prefix="whisker-hil-") as workdir:
@@ -550,8 +589,10 @@ def main():
 
             run_phase(args, workdir, "L5", single_button)
             run_phase(args, workdir, "L3+R3", lambda whisker: test_chords(whisker, pad, fake))
+            if stadia:
+                run_phase(args, workdir, "capture", lambda whisker: test_stadia(whisker, stadia, pad))
     finally:
-        for dev in (fake, pad):
+        for dev in (fake, pad, stadia):
             if dev:
                 dev.destroy()
         if restart_service:

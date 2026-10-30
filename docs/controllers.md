@@ -35,6 +35,6 @@ In `src/buttons.cpp`:
 
 If the device can rumble, add its product to `hidrawRumbleKind` in `src/haptic.cpp` with a report builder and a test in `tests/test_haptic.cpp`.
 
-For an evdev controller with unusual codes, extend `evdevKey` in `src/buttons.cpp`, limited to the driver's vendor ID if the codes mean something else on other devices.
+For an evdev controller with unusual codes, extend `evdevKey` in `src/buttons.cpp`, limited to the driver's vendor ID if the codes mean something else on other devices. The Xbox Elite paddles (Microsoft, `BTN_TRIGGER_HAPPY5-8` before Linux 6.17) and the Stadia controller's Assistant and Capture buttons (Google, `BTN_TRIGGER_HAPPY1-2`) work this way. A new button name goes into `Button` in `src/buttons.h`, `kNames` in `src/buttons.cpp`, `BUTTONS` in `decky/main.py`, the Decky button options in `decky/src/index.tsx` and the button list in the README.
 
 Run `make check` and `make hil-test`, then add the controller to the table in the README. For a Valve device whose reports differ from the 2026 Steam Controller, give `scripts/hil-test.py` a fake for it too. Paste the capture output in the PR.

@@ -152,7 +152,7 @@ static void testChordFormatting() {
     CHECK_EQ(formatButtonChord(kButtonL5), std::string("L5"));
     CHECK_EQ(formatButtonChord(kButtonR3 | kButtonL3), std::string("L3+R3"));
     CHECK_EQ(formatButtonChord(0), std::string(""));
-    for (const char* text : {"A", "L1+R1", "L4+R4", "select+start", "guide"})
+    for (const char* text : {"A", "L1+R1", "L4+R4", "select+start", "guide", "assistant", "assistant+capture"})
         CHECK_EQ(formatButtonChord(chord(text)), std::string(text));
 }
 
@@ -227,6 +227,19 @@ static void testLegacyElitePaddles() {
     CHECK_EQ(evdev(0, EV_KEY, BTN_TRIGGER_HAPPY5, 1), 0u);
 }
 
+static void testStadiaButtons() {
+    constexpr uint16_t kGoogle = 0x18D1;
+    CHECK_EQ(evdev(0, EV_KEY, BTN_TRIGGER_HAPPY1, 1, kGoogle), ButtonSet(kButtonAssistant));
+    CHECK_EQ(evdev(0, EV_KEY, BTN_TRIGGER_HAPPY2, 1, kGoogle), ButtonSet(kButtonCapture));
+    CHECK_EQ(evdev(kButtonAssistant | kButtonCapture, EV_KEY, BTN_TRIGGER_HAPPY1, 0, kGoogle),
+             ButtonSet(kButtonCapture));
+    CHECK_EQ(evdev(0, EV_KEY, BTN_TRIGGER_HAPPY3, 1, kGoogle), 0u);
+    for (uint16_t vendor : {0x054C, 0x045E, 0x0000}) {
+        CHECK_EQ(evdev(0, EV_KEY, BTN_TRIGGER_HAPPY1, 1, vendor), 0u);
+        CHECK_EQ(evdev(0, EV_KEY, BTN_TRIGGER_HAPPY2, 1, vendor), 0u);
+    }
+}
+
 static void testEvdevHat() {
     ButtonSet b = evdev(0, EV_ABS, ABS_HAT0X, -1);
     CHECK_EQ(b, ButtonSet(kButtonLeft));
@@ -254,6 +267,7 @@ int main() {
     testHidId();
     testEvdevKeys();
     testLegacyElitePaddles();
+    testStadiaButtons();
     testEvdevHat();
     return checkReport();
 }

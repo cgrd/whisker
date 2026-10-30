@@ -87,7 +87,7 @@ PEDAL_NAMES = ("left", "center", "right")
 SUBMIT_KEYS = ("none", "enter", "tab")
 BUTTONS = (
     "A", "B", "X", "Y", "L1", "R1", "L2", "R2", "L3", "R3", "L4", "L5", "R4", "R5",
-    "select", "start", "guide", "up", "down", "left", "right",
+    "select", "start", "guide", "assistant", "capture", "up", "down", "left", "right",
 )
 CAPTURE_TIMEOUT_S = 12
 

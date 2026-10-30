@@ -138,7 +138,8 @@ const overlayPositionOptions = options([
 const buttonOptions = options([
     ["", "None"], ["L4", "L4 (Left Back Upper)"], ["R4", "R4 (Right Back Upper)"],
     ["L5", "L5 (Left Back Lower)"], ["R5", "R5 (Right Back Lower)"], ["select", "Select / Back"],
-    ["start", "Start / Menu"], ["guide", "Guide / Steam"], ["L1", "L1"], ["R1", "R1"],
+    ["start", "Start / Menu"], ["guide", "Guide / Steam"], ["assistant", "Assistant (Stadia)"],
+    ["capture", "Capture (Stadia)"], ["L1", "L1"], ["R1", "R1"],
     ["L3", "L3 (Stick Click)"], ["R3", "R3 (Stick Click)"], ["A", "A"], ["B", "B"], ["X", "X"], ["Y", "Y"],
     ["L1+R1", "L1 + R1"], ["L3+R3", "L3 + R3 (Both Stick Clicks)"],
 ]);

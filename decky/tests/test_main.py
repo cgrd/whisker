@@ -143,7 +143,10 @@ def test_user_env_points_at_the_user_session():
     assert env["DBUS_SESSION_BUS_ADDRESS"] == f"unix:path={runtime}/bus"
 
 
-@pytest.mark.parametrize("value, stored", [("L5", "L5"), ("L3+R3", "L3+R3"), ("L1 + R1", "L1+R1"), ("", "")])
+@pytest.mark.parametrize("value, stored", [
+    ("L5", "L5"), ("L3+R3", "L3+R3"), ("L1 + R1", "L1+R1"), ("capture", "capture"),
+    ("assistant+capture", "assistant+capture"), ("", ""),
+])
 def test_set_option_accepts_buttons_and_chords(config_path, value, stored):
     set_option("trigger_button", value)
     assert main.parse_yaml(config_path.read_text())["trigger_button"] == stored
