@@ -16,7 +16,7 @@ Open a terminal (on a Steam Deck: switch to Desktop Mode and open Konsole) and r
 curl -fsSL https://github.com/cgrd/whisker/releases/latest/download/install.sh | bash
 ```
 
-The script downloads the latest release, checks it against `SHA256SUMS`, installs the AppImage to `~/Applications`, sets up a background service and, if [Decky Loader](https://decky.xyz) is installed, adds the Whisker plugin to it. Run it again any time to update. Your settings and models are kept.
+The script downloads the latest release, checks it against `SHA256SUMS`, installs the AppImage to `~/Applications`, sets up a background service and, if [Decky Loader](https://decky.xyz) is installed, adds the Whisker plugin to it. Whisker then updates itself once a day from signed releases, never while you are recording ([docs/updates.md](docs/updates.md); turn it off with `auto_update: false`). Running the script again also updates it, Decky plugin included. Your settings and models are kept.
 
 It doesn't download a speech model. You pick one (477 to 731 MB, see [Models](#models)): on a desktop the installer opens the settings window on the model list, and on a Steam Deck in Game Mode you pick it in the Whisker panel in Decky's Quick Access menu. Until then the service runs, and pressing a trigger shows "No speech model yet" in the overlay.
 
@@ -51,6 +51,8 @@ sudo sh -c 'rm -rf /home/deck/homebrew/plugins/Whisker && python3 -m zipfile -e 
 sha256sum -c --ignore-missing SHA256SUMS
 gh attestation verify Whisker-x86_64.AppImage.zip --repo cgrd/whisker
 ```
+
+Each release also has a minisign-signed `whisker-manifest.json`, which the updater checks; see [docs/updates.md](docs/updates.md#verifying-a-release-by-hand) to verify it yourself.
 
 ## Uninstall
 

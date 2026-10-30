@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Only the latest release gets security fixes. Update with the install one-liner in the [README](README.md).
+Only the latest release gets security fixes. Whisker updates itself daily unless `auto_update` is off; you can also run `Whisker-x86_64.AppImage --update` or the install one-liner in the [README](README.md).
 
 ## Reporting a vulnerability
 
@@ -18,7 +18,7 @@ What to expect:
 
 ## Scope
 
-Whisker reads input devices (hidraw, evdev), creates a virtual keyboard through uinput, listens on a Unix socket in `$XDG_RUNTIME_DIR` and runs commands you configure for pedals. Bugs that let another user or a remote party trigger typing, run commands or read audio are in scope. So are problems in the install script, release artifacts and the Decky plugin, which runs as root.
+Whisker reads input devices (hidraw, evdev), creates a virtual keyboard through uinput, listens on a Unix socket in `$XDG_RUNTIME_DIR` and runs commands you configure for pedals. Bugs that let another user or a remote party trigger typing, run commands or read audio are in scope. So are problems in the install script, the updater, release artifacts and the Decky plugin, which runs as root.
 
 The speech model is downloaded from Hugging Face and isn't covered by this policy.
 
@@ -30,3 +30,9 @@ Every release has a `SHA256SUMS` file, and the release assets carry GitHub build
 sha256sum -c --ignore-missing SHA256SUMS
 gh attestation verify Whisker-x86_64.AppImage.zip --repo cgrd/whisker
 ```
+
+## Signed updates
+
+`SHA256SUMS` and the assets come from the same place, so someone who can publish a release could replace both. The updater doesn't trust them. It installs only what `whisker-manifest.json` describes, and only if that manifest carries a minisign (Ed25519) signature from a public key compiled into the running Whisker. The secret key lives only in a GitHub Actions secret of the approval-gated `release` environment and in the maintainer's password manager. The signed manifest names its version, which must match the release tag and be newer than the running version, so an old release can't be replayed to downgrade anyone.
+
+Verify a manifest by hand with `minisign -V -P <key from src/signing_keys.h> -m whisker-manifest.json`. Key rotation and the full update flow are in [docs/updates.md](docs/updates.md).
