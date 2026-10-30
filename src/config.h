@@ -36,6 +36,7 @@ struct Config {
     bool dictation_commands = true;
     bool auto_capitalize = true;
     bool undo_enabled = true;
+    bool auto_update = true;
     int recording_timeout = 30;
     std::array<PedalConfig, 3> pedals; // [0]=left, [1]=center, [2]=right
     std::string chat_profile = kChatProfileAuto;

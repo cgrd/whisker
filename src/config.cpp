@@ -225,6 +225,8 @@ Config loadConfig(const std::string& path) {
                 cfg.auto_capitalize = (val == "true" || val == "yes" || val == "on");
             } else if (key == "undo_enabled") {
                 cfg.undo_enabled = (val == "true" || val == "yes" || val == "on");
+            } else if (key == "auto_update") {
+                cfg.auto_update = (val == "true" || val == "yes" || val == "on");
             } else if (key == "recording_timeout") {
                 cfg.recording_timeout = std::stoi(val);
             } else if (key == "pedals") {
@@ -333,6 +335,7 @@ void saveConfig(const Config& cfg, const std::string& path) {
     f << "auto_capitalize: " << (cfg.auto_capitalize ? "true" : "false") << "\n";
     f << "undo_enabled: " << (cfg.undo_enabled ? "true" : "false") << "\n";
     f << "recording_timeout: " << cfg.recording_timeout << "\n";
+    f << "auto_update: " << (cfg.auto_update ? "true" : "false") << "\n";
     f << "\npedals:\n";
 
     const char* names[] = {"left", "center", "right"};

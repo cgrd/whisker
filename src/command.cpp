@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 static constexpr size_t kMaxCommand = 64;
@@ -63,6 +64,7 @@ Command CommandSocket::readCommand() {
     if (line == "start") return Command::Start;
     if (line == "stop") return Command::Stop;
     if (line == "capture") return Command::Capture;
+    if (line == "status") return Command::Status;
     return Command::None;
 }
 
@@ -71,4 +73,34 @@ void CommandSocket::reply(const std::string& line) {
     std::string msg = line + "\n";
     if (::send(client_fd_, msg.data(), msg.size(), MSG_NOSIGNAL) < 0)
         fprintf(stderr, "command: reply failed: %s\n", strerror(errno));
+}
+
+std::string commandSocketPath() {
+    const char* dir = getenv("XDG_RUNTIME_DIR");
+    return std::string(dir ? dir : "/tmp") + "/whisker.sock";
+}
+
+bool sendCommand(const std::string& path, const std::string& command, std::string& reply, int timeout_ms) {
+    reply.clear();
+    int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0) return false;
+    struct sockaddr_un addr = {};
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
+    if (::connect(fd, (struct sockaddr*)&addr, sizeof(addr)) != 0) {
+        ::close(fd);
+        return false;
+    }
+    timeval timeout = {timeout_ms / 1000, (timeout_ms % 1000) * 1000};
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    std::string msg = command + "\n";
+    std::string line;
+    char c = 0;
+    if (::send(fd, msg.data(), msg.size(), MSG_NOSIGNAL) == static_cast<ssize_t>(msg.size())) {
+        while (line.size() < kMaxCommand && ::read(fd, &c, 1) == 1 && c != '\n')
+            line += c;
+        if (c == '\n') reply = line;
+    }
+    ::close(fd);
+    return true;
 }

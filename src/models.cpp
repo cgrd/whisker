@@ -54,24 +54,43 @@ std::string modelUserAgent() {
     return std::string("Whisker/") + kWhiskerVersion + " (+https://github.com/cgrd/whisker)";
 }
 
-std::string downloadFile(const std::string& url, const std::string& path) {
+// Runs curl with the shared safety options. curl retries a transient failure once and nothing
+// loops around it. stdout goes to *out when given. Returns "" or an error.
+static std::string runCurl(const std::vector<std::string>& args, std::string* out) {
     int err_pipe[2];
+    int out_pipe[2] = {-1, -1};
     if (pipe2(err_pipe, O_CLOEXEC) != 0) return std::string("cannot start curl: ") + strerror(errno);
+    if (out && pipe2(out_pipe, O_CLOEXEC) != 0) {
+        close(err_pipe[0]);
+        close(err_pipe[1]);
+        return std::string("cannot start curl: ") + strerror(errno);
+    }
     std::string agent = modelUserAgent();
-    const char* argv[] = {"curl", "-fsSL", "--retry", "1", "-A", agent.c_str(), "-o", path.c_str(),
-                          url.c_str(), nullptr};
+    std::vector<std::string> full = {"curl", "-fsS", "--retry", "1", "--proto-redir", "=https", "-A", agent};
+    full.insert(full.end(), args.begin(), args.end());
+    std::vector<char*> argv;
+    for (auto& a : full) argv.push_back(a.data());
+    argv.push_back(nullptr);
+
     pid_t pid = fork();
     if (pid == 0) {
         dup2(err_pipe[1], STDERR_FILENO);
-        execvp("curl", const_cast<char* const*>(argv));
+        if (out) dup2(out_pipe[1], STDOUT_FILENO);
+        execvp("curl", argv.data());
         _exit(127);
     }
     close(err_pipe[1]);
+    if (out) close(out_pipe[1]);
     std::string output;
     char buf[256];
     ssize_t n;
     while ((n = read(err_pipe[0], buf, sizeof(buf))) > 0) output.append(buf, n);
     close(err_pipe[0]);
+    if (out) {
+        out->clear();
+        while ((n = read(out_pipe[0], buf, sizeof(buf))) > 0) out->append(buf, n);
+        close(out_pipe[0]);
+    }
     if (pid < 0) return std::string("cannot start curl: ") + strerror(errno);
 
     int status = 0;
@@ -81,6 +100,17 @@ std::string downloadFile(const std::string& url, const std::string& path) {
     if (WIFEXITED(status) && WEXITSTATUS(status) == 127) return "curl is not installed";
     if (output.empty()) return "curl failed";
     return output.substr(output.rfind('\n') + 1);
+}
+
+std::string downloadFile(const std::string& url, const std::string& path, uint64_t max_bytes) {
+    std::vector<std::string> args = {"-L", "-o", path};
+    if (max_bytes > 0) args.insert(args.end(), {"--max-filesize", std::to_string(max_bytes)});
+    args.push_back(url);
+    return runCurl(args, nullptr);
+}
+
+std::string fetchRedirect(const std::string& url, std::string& location) {
+    return runCurl({"-o", "/dev/null", "-w", "%{redirect_url}", url}, &location);
 }
 
 std::string installVerified(const std::string& tmp, const std::string& dest, uint64_t size,
@@ -95,7 +125,7 @@ std::string installVerified(const std::string& tmp, const std::string& dest, uin
     } else if (sha256File(tmp) != sha256) {
         error = "the download is corrupt (SHA-256 mismatch)";
     } else if (rename(tmp.c_str(), dest.c_str()) != 0) {
-        error = std::string("cannot save the model: ") + strerror(errno);
+        error = std::string("cannot move the download into place: ") + strerror(errno);
     }
     if (!error.empty()) unlink(tmp.c_str());
     return error;

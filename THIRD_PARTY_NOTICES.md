@@ -11,6 +11,7 @@ Whisker's own code is MIT licensed (see [LICENSE](LICENSE)). Release artifacts a
 | miniz (vendored in transcribe.cpp) | see transcribe.cpp | MIT | https://github.com/richgel999/miniz |
 | Silero VAD (vendored in transcribe.cpp) | see transcribe.cpp | MIT | https://github.com/snakers4/silero-vad |
 | Dear ImGui | 1.93.0 | MIT | https://github.com/ocornut/imgui |
+| Monocypher (with the optional Ed25519 code) | 4.0.3 | BSD-2-Clause (chosen from BSD-2-Clause OR CC0-1.0) | https://github.com/LoupVaillant/Monocypher |
 | SDL2 | 2.32.10 | Zlib | https://github.com/libsdl-org/SDL |
 | cairo | 1.18.2 | LGPL-2.1-only OR MPL-1.1 | https://cairographics.org/releases/cairo-1.18.2.tar.xz |
 | pixman | 0.43.4 | MIT | https://cairographics.org/releases/ |

@@ -48,6 +48,15 @@ target_include_directories(test_models PRIVATE ${CMAKE_BINARY_DIR})
 
 whisker_test(test_spawn ${CMAKE_SOURCE_DIR}/src/spawn.cpp)
 
+whisker_test(test_update ${CMAKE_SOURCE_DIR}/src/update.cpp)
+target_link_libraries(test_update PRIVATE monocypher)
+if(WHISKER_REQUIRE_SIGNING_KEY)
+    add_test(NAME release_signing_key COMMAND test_update --require-release-key)
+endif()
+add_test(NAME cli_update_needs_appimage
+    COMMAND sh -c "env -u APPIMAGE $<TARGET_FILE:whisker> --update -c /dev/null 2>&1; test $? -eq 1")
+set_tests_properties(cli_update_needs_appimage PROPERTIES PASS_REGULAR_EXPRESSION "not running from an AppImage")
+
 add_test(NAME cli_unknown_flag
     COMMAND sh -c "$<TARGET_FILE:whisker> --settings-only; test $? -eq 2")
 set_tests_properties(cli_unknown_flag PROPERTIES TIMEOUT 10)

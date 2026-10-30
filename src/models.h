@@ -31,8 +31,12 @@ std::string modelOriginalUrl();
 std::string modelUserAgent();
 
 // Fetches url to path with curl. curl retries a transient failure once and nothing loops
-// around it, so a failed download stops until the user starts it again. Returns "" or an error.
-std::string downloadFile(const std::string& url, const std::string& path);
+// around it, so a failed download stops until the user starts it again. Redirects must stay on
+// HTTPS, and max_bytes (0 for no limit) caps the download. Returns "" or an error.
+std::string downloadFile(const std::string& url, const std::string& path, uint64_t max_bytes = 0);
+
+// Requests url without following redirects and stores where it redirects to. Returns "" or an error.
+std::string fetchRedirect(const std::string& url, std::string& location);
 
 // Moves a finished download into place only if its size and SHA-256 match; otherwise deletes
 // it. Returns "" or an error for the user.

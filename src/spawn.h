@@ -10,3 +10,7 @@ std::vector<std::string> splitCommand(const std::string& command);
 // Runs the command without a shell and without waiting for it. Returns false if it
 // couldn't be started.
 bool spawnDetached(const std::string& command);
+
+// Runs argv[0] from PATH without a shell, waits for it and returns its exit code, or -1 if it
+// couldn't be started or was killed.
+int runAndWait(const std::vector<std::string>& args);

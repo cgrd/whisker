@@ -9,7 +9,10 @@ OUT="${1:-dist}"
 [ -f "$OUT/Whisker-x86_64.AppImage" ] || { echo "missing $OUT/Whisker-x86_64.AppImage" >&2; exit 1; }
 
 rm -f "$OUT/Whisker-x86_64.AppImage.zip"
-(cd "$OUT" && python3 -m zipfile -c Whisker-x86_64.AppImage.zip Whisker-x86_64.AppImage)
+# Stored, not deflated: whisker --update unpacks it without zlib, and the AppImage is compressed already
+(cd "$OUT" && python3 -I -c 'import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_STORED) as z:
+    z.write(sys.argv[2])' Whisker-x86_64.AppImage.zip Whisker-x86_64.AppImage)
 scripts/package-decky.sh "$OUT"
 cp scripts/install.sh packaging/Install-Whisker.desktop packaging/Uninstall-Whisker.desktop "$OUT/"
 
