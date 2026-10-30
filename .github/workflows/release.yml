@@ -68,6 +68,8 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/build.yml
+    with:
+      cmake_args: -DWHISKER_REQUIRE_SIGNING_KEY=ON
 
   publish:
     needs: [target, build]
@@ -95,15 +97,24 @@ jobs:
             dist/install.sh
             dist/Install-Whisker.desktop
             dist/Uninstall-Whisker.desktop
-      - name: Attach assets and add install instructions
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.target.outputs.tag }}
+      - name: Collect LGPL sources
         run: |
           python3 -m zipfile -e dist/Whisker-x86_64.AppImage.zip work
           chmod +x work/Whisker-x86_64.AppImage
           scripts/fetch-lgpl-sources.sh work
           mv work/Whisker-lgpl-sources.tar dist/
+      # Fails without the secret, so a release is never published unsigned
+      - name: Sign the update manifest
+        env:
+          TAG: ${{ needs.target.outputs.tag }}
+          WHISKER_SIGNING_KEY: ${{ secrets.WHISKER_SIGNING_KEY }}
+          WHISKER_SIGNING_KEY_PASSWORD: ${{ secrets.WHISKER_SIGNING_KEY_PASSWORD }}
+        run: scripts/sign-release.sh "$TAG" dist
+      - name: Attach assets and add install instructions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.target.outputs.tag }}
+        run: |
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag --generate-notes
           gh release upload "$TAG" dist/* --clobber
           gh release view "$TAG" --json body --jq .body > changes.md
