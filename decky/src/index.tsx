@@ -82,6 +82,7 @@ const DEFAULTS: Record<string, Value> = {
     auto_capitalize: true,
     undo_enabled: true,
     recording_timeout: 30,
+    auto_update: true,
 };
 const PEDAL_DEFAULTS: Record<string, Value> = {
     action: "none",
@@ -455,6 +456,7 @@ function WhiskerPanel() {
                 {text("model", "Model Path", "Path to a GGUF model file")}
                 {slider("history", "History Entries", 0, 100, 5, "Transcriptions to keep")}
                 {toggle("tray", "Tray Icon", "Show system tray icon (desktop mode)")}
+                {toggle("auto_update", "Automatic Updates", "Install signed Whisker releases once a day, never while recording")}
             </PanelSection>
             <PanelSection title="Troubleshooting">
                 {row(<ButtonItem label="Restart Service" description="Stop and restart Whisker"

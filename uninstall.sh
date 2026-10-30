@@ -6,6 +6,7 @@ echo "=== Whisker Uninstaller ==="
 echo ""
 
 # Stop and disable service
+systemctl --user disable --now whisker-update.timer 2>/dev/null || true
 systemctl --user stop whisker 2>/dev/null || true
 systemctl --user disable whisker 2>/dev/null || true
 
@@ -14,6 +15,7 @@ rm -f "$HOME/.local/bin/whisker"
 rm -f "$HOME/.local/share/icons/hicolor/256x256/apps/whisker.png"
 rm -f "$HOME/.local/share/applications/whisker.desktop"
 rm -f "$HOME/.config/systemd/user/whisker.service"
+rm -f "$HOME/.config/systemd/user/whisker-update.service" "$HOME/.config/systemd/user/whisker-update.timer"
 rm -f "$HOME/.config/autostart/whisker.desktop"
 
 # Update caches
