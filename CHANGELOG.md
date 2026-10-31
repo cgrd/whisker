@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.1](https://github.com/cgrd/whisker/compare/v1.4.0...v1.4.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **ci:** keep the signing key away from build output and pin build inputs ([#48](https://github.com/cgrd/whisker/issues/48)) ([c9fbebe](https://github.com/cgrd/whisker/commit/c9fbebe0609bf7b52023485a004df92fde592ee1))
+* **update:** harden the installer, downloads and update service ([#49](https://github.com/cgrd/whisker/issues/49)) ([ddff9a0](https://github.com/cgrd/whisker/commit/ddff9a097e762acf66877f21ee5fa4f2ca589dc9))
+
 ## [1.4.0](https://github.com/cgrd/whisker/compare/v1.3.1...v1.4.0) (2026-10-31)
 
 
