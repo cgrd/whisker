@@ -15,10 +15,20 @@ on:
       use_cache:
         type: boolean
         default: true
+      tag:
+        description: Release tag to build; empty builds the commit that triggered the workflow
+        type: string
+        default: ""
     outputs:
       artifact:
         description: Name of the uploaded artifact holding the release assets
         value: ${{ jobs.build.outputs.artifact }}
+      commit:
+        description: Commit that was built
+        value: ${{ jobs.build.outputs.commit }}
+      sha256:
+        description: sha256sum lines for every file in the artifact
+        value: ${{ jobs.build.outputs.sha256 }}
 
 permissions:
   contents: read
@@ -28,10 +38,25 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       artifact: ${{ steps.name.outputs.artifact }}
+      commit: ${{ steps.name.outputs.commit }}
+      sha256: ${{ steps.hash.outputs.sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.tag != '' && format('refs/tags/{0}', inputs.tag) || '' }}
           persist-credentials: false
+
+      - id: name
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          commit=$(git rev-parse HEAD)
+          if [ -n "$TAG" ] && [ "$commit" != "$(git rev-parse "refs/tags/$TAG^{commit}")" ]; then
+            echo "::error::checked out $commit, which is not $TAG"
+            exit 1
+          fi
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "artifact=whisker-${commit::12}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -59,14 +84,19 @@ jobs:
       - name: Check CPU baseline
         run: scripts/check-cpu-baseline.sh dist/Whisker-x86_64.AppImage
 
-      - id: name
-        run: echo "artifact=whisker-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - name: Hash the release assets
+        id: hash
+        run: |
+          rm dist/Whisker-x86_64.AppImage
+          {
+            echo "sha256<<EOF"
+            (cd dist && sha256sum -- *)
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.name.outputs.artifact }}
-          path: |
-            dist/*
-            !dist/Whisker-x86_64.AppImage
+          path: dist/*
           if-no-files-found: error
           retention-days: 14

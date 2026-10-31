@@ -13,21 +13,30 @@ APPIMAGE="$OUT/Whisker-x86_64.AppImage"
 DECKY_API_VERSION=1.1.3
 
 CAIRO_VERSION=$(sed -n 's|.*cairographics.org/releases/cairo-\([0-9.]*\)\.tar\.xz.*|\1|p' Containerfile)
-[ -n "$CAIRO_VERSION" ] || { echo "cannot find the cairo version in Containerfile" >&2; exit 1; }
+CAIRO_SHA256=$(sed -n '/cairographics.org\/releases\/cairo-/{n;s/^ *\([0-9a-f]\{64\}\).*/\1/p}' Containerfile)
+[ -n "$CAIRO_VERSION" ] && [ -n "$CAIRO_SHA256" ] || { echo "cannot find the cairo version and SHA-256 in Containerfile" >&2; exit 1; }
 
-RUNTIME_SIZE=$(APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGE" --appimage-offset)
-RUNTIME_COMMIT=$(APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGE" --appimage-version 2>&1 | sed -n 's|.*type2-runtime/commit/\([0-9a-f]*\).*|\1|p')
-FUSE_VERSION=$(head -c "$RUNTIME_SIZE" "$APPIMAGE" | strings | grep -xE '3\.[0-9]+\.[0-9]+' | sort -u)
-[ -n "$RUNTIME_COMMIT" ] || { echo "cannot read the AppImage runtime commit" >&2; exit 1; }
-[ "$(wc -l <<<"$FUSE_VERSION")" -eq 1 ] || { echo "cannot detect the libfuse version: $FUSE_VERSION" >&2; exit 1; }
+# Read the runtime from its ELF headers instead of running it (--appimage-offset): the release
+# workflow must never execute what it builds
+read -r SHOFF SHENTSIZE SHNUM < <(readelf -h "$APPIMAGE" | awk -F: '
+    /Start of section headers/ {o = $2 + 0} /Size of section headers/ {s = $2 + 0}
+    /Number of section headers/ {n = $2 + 0} END {print o, s, n}')
+RUNTIME_SIZE=$((SHOFF + SHENTSIZE * SHNUM))
+[ "$RUNTIME_SIZE" -gt 0 ] || { echo "cannot read the AppImage runtime size" >&2; exit 1; }
+RUNTIME_STRINGS=$(head -c "$RUNTIME_SIZE" "$APPIMAGE" | strings)
+RUNTIME_COMMIT=$(sed -n 's|.*type2-runtime/commit/\([0-9a-f]*\).*|\1|p' <<<"$RUNTIME_STRINGS" | sort -u)
+FUSE_VERSION=$(grep -xE '3\.[0-9]+\.[0-9]+' <<<"$RUNTIME_STRINGS" | sort -u)
+[[ "$RUNTIME_COMMIT" =~ ^[0-9a-f]{7,40}$ ]] || { echo "cannot read the AppImage runtime commit: $RUNTIME_COMMIT" >&2; exit 1; }
+[[ "$FUSE_VERSION" =~ ^3\.[0-9]+\.[0-9]+$ ]] || { echo "cannot detect the libfuse version: $FUSE_VERSION" >&2; exit 1; }
 
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 SRC="$STAGE/whisker-lgpl-sources"
 mkdir -p "$SRC"
 
-fetch() { curl -fsSL -o "$SRC/$1" "$2"; }
+fetch() { curl -fsSL --proto '=https' --proto-redir '=https' -o "$SRC/$1" "$2"; }
 fetch "cairo-$CAIRO_VERSION.tar.xz" "https://cairographics.org/releases/cairo-$CAIRO_VERSION.tar.xz"
+echo "$CAIRO_SHA256  $SRC/cairo-$CAIRO_VERSION.tar.xz" | sha256sum -c --quiet - || { echo "cairo checksum mismatch" >&2; exit 1; }
 fetch "fuse-$FUSE_VERSION.tar.xz" "https://github.com/libfuse/libfuse/releases/download/fuse-$FUSE_VERSION/fuse-$FUSE_VERSION.tar.xz"
 fetch "type2-runtime-$RUNTIME_COMMIT.tar.gz" "https://github.com/AppImage/type2-runtime/archive/$RUNTIME_COMMIT.tar.gz"
 fetch "decky-api-$DECKY_API_VERSION.tgz" "https://registry.npmjs.org/@decky/api/-/api-$DECKY_API_VERSION.tgz"

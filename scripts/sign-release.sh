@@ -3,6 +3,7 @@
 # Writes <dist>/whisker-manifest.json and signs it with the minisign secret key in
 # $WHISKER_SIGNING_KEY ($WHISKER_SIGNING_KEY_PASSWORD if the key has a password), then checks the
 # signature against the public keys compiled into Whisker. Fails without a key: no unsigned releases.
+# Never run anything from the build in the same job: it could read the key.
 #
 #   scripts/sign-release.sh v1.3.0 dist
 set -euo pipefail
@@ -24,7 +25,12 @@ umask 077
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 
-curl -fsSL -o "$work/minisign.tar.gz" \
+# Out of the environment before curl, minisign or Python start, so none of them inherits the key
+printf '%s\n' "$WHISKER_SIGNING_KEY" > "$work/key"
+key_password="${WHISKER_SIGNING_KEY_PASSWORD:-}"
+unset WHISKER_SIGNING_KEY WHISKER_SIGNING_KEY_PASSWORD
+
+curl -fsSL --proto '=https' --proto-redir '=https' -o "$work/minisign.tar.gz" \
     "https://github.com/jedisct1/minisign/releases/download/$MINISIGN_VERSION/minisign-$MINISIGN_VERSION-linux.tar.gz"
 echo "$MINISIGN_SHA256  $work/minisign.tar.gz" | sha256sum -c --quiet - || die "minisign download checksum mismatch"
 tar -xzf "$work/minisign.tar.gz" -C "$work" --warning=no-unknown-keyword minisign-linux/x86_64/minisign
@@ -33,12 +39,13 @@ minisign="$work/minisign-linux/x86_64/minisign"
 python3 -I scripts/make-manifest.py "$TAG" "$DIST"
 manifest="$DIST/whisker-manifest.json"
 
-printf '%s\n' "$WHISKER_SIGNING_KEY" > "$work/key"
-if [ -n "${WHISKER_SIGNING_KEY_PASSWORD:-}" ]; then
-    printf '%s\n' "$WHISKER_SIGNING_KEY_PASSWORD" | "$minisign" -S -s "$work/key" -m "$manifest" -t "whisker $TAG"
+if [ -n "$key_password" ]; then
+    printf '%s\n' "$key_password" | "$minisign" -S -s "$work/key" -m "$manifest" -t "whisker $TAG"
 else
     "$minisign" -S -s "$work/key" -m "$manifest" -t "whisker $TAG" </dev/null
 fi
+unset key_password
+rm -f -- "$work/key"
 
 for key in "${keys[@]}"; do
     if "$minisign" -V -q -P "$key" -m "$manifest"; then
