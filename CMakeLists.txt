@@ -8,6 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(FetchContent)
 set(TRANSCRIBE_CPP_TAG 5700f127e38dd53c4735ea23ef743b4b538eacd4 CACHE STRING "transcribe.cpp commit or branch")
 set(IMGUI_TAG v1.93.0 CACHE STRING "Dear ImGui tag")
+set(MONOCYPHER_TAG 4.0.3 CACHE STRING "Monocypher tag")
 FetchContent_Declare(transcribe_cpp
     GIT_REPOSITORY https://github.com/handy-computer/transcribe.cpp
     GIT_TAG ${TRANSCRIBE_CPP_TAG}
@@ -15,6 +16,10 @@ FetchContent_Declare(transcribe_cpp
 FetchContent_Declare(imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui
     GIT_TAG ${IMGUI_TAG}
+)
+FetchContent_Declare(monocypher
+    GIT_REPOSITORY https://github.com/LoupVaillant/Monocypher
+    GIT_TAG ${MONOCYPHER_TAG}
 )
 
 option(WHISKER_VULKAN "Enable Vulkan GPU acceleration" ON)
@@ -51,6 +56,21 @@ FetchContent_GetProperties(imgui)
 if(NOT imgui_POPULATED)
     FetchContent_Populate(imgui)
 endif()
+
+FetchContent_GetProperties(monocypher)
+if(NOT monocypher_POPULATED)
+    FetchContent_Populate(monocypher)
+endif()
+# Verifies minisign signatures on update manifests. The optional ed25519 file is needed because
+# Monocypher's own EdDSA hashes with BLAKE2b, while minisign uses standard Ed25519 (SHA-512).
+add_library(monocypher STATIC
+    ${monocypher_SOURCE_DIR}/src/monocypher.c
+    ${monocypher_SOURCE_DIR}/src/optional/monocypher-ed25519.c
+)
+target_include_directories(monocypher SYSTEM PUBLIC
+    ${monocypher_SOURCE_DIR}/src
+    ${monocypher_SOURCE_DIR}/src/optional
+)
 
 find_package(PkgConfig REQUIRED)
 
@@ -234,6 +254,8 @@ add_executable(whisker
     src/trigger_capture.cpp
     src/models.cpp
     src/sha256.cpp
+    src/update.cpp
+    src/selfupdate.cpp
     src/overlay_gamescope.cpp
     src/overlay_layershell.cpp
 )
@@ -267,6 +289,7 @@ target_link_libraries(whisker PRIVATE
     X11::X11
     imgui
     whisker_assets
+    monocypher
 )
 
 install(TARGETS whisker RUNTIME DESTINATION bin)
@@ -276,6 +299,7 @@ install(FILES whisker.service DESTINATION share/systemd/user)
 install(FILES 70-pedal-stt.rules DESTINATION lib/udev/rules.d RENAME 70-whisker.rules)
 
 option(WHISKER_BUILD_TESTS "Build unit tests" ON)
+option(WHISKER_REQUIRE_SIGNING_KEY "Fail the tests while src/signing_keys.h holds the placeholder (release builds)" OFF)
 if(WHISKER_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)

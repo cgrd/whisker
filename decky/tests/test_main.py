@@ -125,11 +125,18 @@ def test_set_option_coerces_numbers(config_path):
     ("chat_profile", 1),
     ("chat_profiles.wow.open_key", "enter"),
     ("chat_profiles.wow.channels.party.command", "/p"),
+    ("auto_update", "false"),
+    ("auto_update", 0),
 ])
 def test_set_option_rejects_invalid(config_path, path, value):
     with pytest.raises(ValueError):
         set_option(path, value)
     assert not config_path.exists()
+
+
+def test_set_option_turns_off_automatic_updates(config_path):
+    set_option("auto_update", False)
+    assert main.parse_yaml(config_path.read_text()) == {"auto_update": False}
 
 
 def test_set_option_keeps_exec_commands_from_the_config_file(config_path):

@@ -59,9 +59,12 @@ has_decky() {
 }
 
 stop_old_install() {
+    user_systemctl disable --now whisker-update.timer 2>/dev/null || true
     user_systemctl disable --now whisker 2>/dev/null || true
     user_systemctl disable --now pedal-stt 2>/dev/null || true
     rm -f "$HOME/.config/systemd/user/whisker.service" \
+          "$HOME/.config/systemd/user/whisker-update.service" \
+          "$HOME/.config/systemd/user/whisker-update.timer" \
           "$HOME/.config/systemd/user/pedal-stt.service" \
           "$HOME/.config/autostart/whisker.desktop" \
           "$HOME/.local/bin/whisker" \

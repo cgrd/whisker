@@ -16,6 +16,7 @@
 #include "command.h"
 #include "spawn.h"
 #include "processes.h"
+#include "selfupdate.h"
 #include <algorithm>
 #include <csignal>
 #include <cstdio>
@@ -174,6 +175,7 @@ static void doTranscribe(const PedalConfig& pcfg, AudioCapture& audio, SpeechToT
                 Command cc = cmdsock->readCommand();
                 if (cc == Command::Stop) released = true;
                 if (cc == Command::Capture) cmdsock->reply("busy");
+                if (cc == Command::Status) cmdsock->reply("recording");
             }
         }
         if (cfg.tray) tray.poll();
@@ -312,13 +314,15 @@ static int checkConfig(const std::string& path) {
 }
 
 static void printUsage() {
-    printf("usage: whisker [-c CONFIG] [--settings] [--check-config] [--version]\n");
+    printf("usage: whisker [-c CONFIG] [--settings] [--check-config] [--check-update] [--update] [--version]\n");
 }
 
 int main(int argc, char* argv[]) {
     std::string config_path = defaultConfigPath();
     bool open_settings = false;
     bool check_config = false;
+    bool update_requested = false;
+    UpdateMode update_mode = UpdateMode::Check;
 
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--settings") == 0 || strcmp(argv[i], "-s") == 0) {
@@ -327,6 +331,15 @@ int main(int argc, char* argv[]) {
             config_path = argv[++i];
         } else if (strcmp(argv[i], "--check-config") == 0) {
             check_config = true;
+        } else if (strcmp(argv[i], "--check-update") == 0) {
+            update_requested = true;
+            update_mode = UpdateMode::Check;
+        } else if (strcmp(argv[i], "--update") == 0) {
+            update_requested = true;
+            update_mode = UpdateMode::Install;
+        } else if (strcmp(argv[i], "--auto-update") == 0) {
+            update_requested = true;
+            update_mode = UpdateMode::Scheduled;
         } else if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-V") == 0) {
             printf("whisker %s\n", WHISKER_VERSION);
             return 0;
@@ -342,6 +355,8 @@ int main(int argc, char* argv[]) {
 
     if (check_config)
         return checkConfig(config_path);
+    if (update_requested)
+        return runUpdate(update_mode, config_path);
 
     if (!open_settings) {
         struct stat st;
@@ -411,8 +426,7 @@ int main(int argc, char* argv[]) {
     signal(SIGTERM, signalHandler);
 
     CommandSocket cmdsock;
-    std::string sock_path = std::string(getenv("XDG_RUNTIME_DIR") ?: "/tmp") + "/whisker.sock";
-    bool has_cmdsock = cmdsock.init(sock_path);
+    bool has_cmdsock = cmdsock.init(commandSocketPath());
     if (!has_cmdsock)
         fprintf(stderr, "whisker: command socket unavailable, continuing without\n");
 
@@ -608,6 +622,8 @@ int main(int argc, char* argv[]) {
                 transcribe(hotkey_pcfg, PedalButton::Center, "");
             if (cc == Command::Capture)
                 cmdsock.reply(has_controllers ? controllers.capture(kCaptureTimeoutMs, g_running) : "");
+            if (cc == Command::Status)
+                cmdsock.reply("idle");
         }
     }
 

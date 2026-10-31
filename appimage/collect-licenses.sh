@@ -27,5 +27,6 @@ copy libevdev "$DEPS"/libevdev-*/COPYING
 copy transcribe.cpp "$TRANSCRIBE/LICENSE" "$TRANSCRIBE/THIRD-PARTY-LICENSES.md"
 copy ggml "$TRANSCRIBE/ggml/LICENSE"
 copy miniz "$TRANSCRIBE/src/third_party/miniz/LICENSE"
+copy monocypher "$FETCHED/monocypher-src/LICENCE.md"
 copy silero-vad "$TRANSCRIBE/src/third_party/silero_vad/LICENSE"
 copy imgui "$FETCHED/imgui-src/LICENSE.txt"

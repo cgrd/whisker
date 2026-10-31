@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #pragma once
+#include <string>
 
 class Tray {
 public:
@@ -9,3 +10,7 @@ public:
     void poll();
     bool quitRequested() const;
 };
+
+// Shows a desktop notification through org.freedesktop.Notifications. Returns false if there is
+// no session bus or notification server.
+bool notifyDesktop(const std::string& summary, const std::string& body);

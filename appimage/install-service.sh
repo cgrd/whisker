@@ -25,8 +25,33 @@ WantedBy=default.target
 EOF
 chmod 644 "$HOME/.config/systemd/user/whisker.service"
 
+cat > "$HOME/.config/systemd/user/whisker-update.service" <<EOF
+[Unit]
+Description=Whisker update (signed releases only)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=${APPIMAGE_PATH} --auto-update
+Environment=WHISKER_SERVICE=1
+EOF
+cat > "$HOME/.config/systemd/user/whisker-update.timer" <<EOF
+[Unit]
+Description=Daily Whisker update check
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=4h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+chmod 644 "$HOME/.config/systemd/user/whisker-update.service" "$HOME/.config/systemd/user/whisker-update.timer"
+
 systemctl --user daemon-reload
 systemctl --user enable whisker
+systemctl --user enable --now whisker-update.timer
 
 systemctl --user import-environment WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS 2>/dev/null || true
 

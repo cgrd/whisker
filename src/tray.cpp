@@ -487,3 +487,23 @@ void Tray::poll() {
 bool Tray::quitRequested() const {
     return g_tray.quit.load();
 }
+
+bool notifyDesktop(const std::string& summary, const std::string& body) {
+    sd_bus* bus = nullptr;
+    if (sd_bus_open_user(&bus) < 0) return false;
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus_message* reply = nullptr;
+    int r = sd_bus_call_method(bus,
+        "org.freedesktop.Notifications",
+        "/org/freedesktop/Notifications",
+        "org.freedesktop.Notifications",
+        "Notify",
+        &error, &reply, "susssasa{sv}i",
+        "Whisker", 0u, "audio-input-microphone", summary.c_str(), body.c_str(), 0, 0, -1);
+    if (r < 0)
+        fprintf(stderr, "whisker: notification failed: %s\n", error.message ? error.message : strerror(-r));
+    sd_bus_error_free(&error);
+    if (reply) sd_bus_message_unref(reply);
+    sd_bus_unref(bus);
+    return r >= 0;
+}

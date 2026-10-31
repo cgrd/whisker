@@ -66,3 +66,24 @@ bool spawnDetached(const std::string& command) {
     waitpid(child, &status, 0);
     return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
+
+int runAndWait(const std::vector<std::string>& args) {
+    if (args.empty())
+        return -1;
+    std::vector<char*> argv;
+    for (auto& a : args)
+        argv.push_back(const_cast<char*>(a.c_str()));
+    argv.push_back(nullptr);
+    pid_t child = fork();
+    if (child < 0)
+        return -1;
+    if (child == 0) {
+        execvp(argv[0], argv.data());
+        perror(argv[0]);
+        _exit(127);
+    }
+    int status = 0;
+    if (waitpid(child, &status, 0) < 0 || !WIFEXITED(status))
+        return -1;
+    return WEXITSTATUS(status);
+}

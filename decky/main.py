@@ -140,6 +140,7 @@ TOP_OPTIONS = {
     "auto_capitalize": bool,
     "undo_enabled": bool,
     "recording_timeout": int,
+    "auto_update": bool,
 }
 
 # exec actions and their commands can only be set by editing config.yaml, so nothing

@@ -42,6 +42,9 @@ chat_profile: auto
 #         say: tell, whisper
 #         target: true
 
+# Install signed Whisker releases once a day (never while recording)
+auto_update: true
+
 pedals:
   left:
     action: key

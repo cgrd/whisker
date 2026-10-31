@@ -669,6 +669,7 @@ static void drawAudioTab(Config& cfg, std::vector<AudioSource>& sources, int& se
     ImGui::Checkbox("Show overlay during recording", &cfg.overlay);
     layout.overlay_checkbox = itemRect();
     ImGui::Checkbox("Show tray icon", &cfg.tray);
+    ImGui::Checkbox("Install updates automatically", &cfg.auto_update);
     ImGui::TextDisabled("Send after dictation");
     submitKeyCombo("##submit_key", cfg.submit_key);
     ImGui::TextDisabled("Game chat profile");

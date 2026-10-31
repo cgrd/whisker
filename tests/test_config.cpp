@@ -53,7 +53,8 @@ static void testParseTopLevel() {
         "dictation_commands: false\n"
         "auto_capitalize: false\n"
         "undo_enabled: false\n"
-        "recording_timeout: 60\n"));
+        "recording_timeout: 60\n"
+        "auto_update: false\n"));
     CHECK_EQ(cfg.model_path, std::string(getenv("HOME")) + "/models/m.gguf");
     CHECK_EQ(cfg.backend, "cpu");
     CHECK_EQ(cfg.history_count, 50);
@@ -72,6 +73,7 @@ static void testParseTopLevel() {
     CHECK(!cfg.auto_capitalize);
     CHECK(!cfg.undo_enabled);
     CHECK_EQ(cfg.recording_timeout, 60);
+    CHECK(!cfg.auto_update);
 }
 
 static void testParsePedals() {
@@ -102,6 +104,7 @@ static void testParsePedals() {
     CHECK_EQ(cfg.pedals[2].exec_press, "notify-send down");
     CHECK_EQ(cfg.pedals[2].exec_release, "notify-send up");
     CHECK_EQ(cfg.backend, "cpu");
+    CHECK(cfg.auto_update);
 }
 
 static void testSaveLoadRoundTrip() {
@@ -119,6 +122,7 @@ static void testSaveLoadRoundTrip() {
     in.submit_key = "tab";
     in.haptic = false;
     in.recording_timeout = 45;
+    in.auto_update = false;
     in.pedals[0] = {PedalAction::Key, "ctrl+c", PedalMode::Tap, OutputMode::Type, "", "", ""};
     in.pedals[1] = {PedalAction::Transcribe, "", PedalMode::Hold, OutputMode::Clipboard, "enter", "", ""};
     in.pedals[2] = {PedalAction::Exec, "", PedalMode::Hold, OutputMode::Type, "", "echo a", "echo b"};
@@ -140,6 +144,7 @@ static void testSaveLoadRoundTrip() {
     CHECK_EQ(out.submit_key, in.submit_key);
     CHECK_EQ(out.haptic, in.haptic);
     CHECK_EQ(out.recording_timeout, in.recording_timeout);
+    CHECK_EQ(out.auto_update, in.auto_update);
     CHECK(out.pedals[0].action == PedalAction::Key);
     CHECK_EQ(out.pedals[0].key, "ctrl+c");
     CHECK(out.pedals[0].mode == PedalMode::Tap);

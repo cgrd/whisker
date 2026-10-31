@@ -37,8 +37,16 @@ static void testSpawnRunsWithoutShell() {
     CHECK(!spawnDetached(""));
 }
 
+static void testRunAndWait() {
+    CHECK_EQ(runAndWait({"true"}), 0);
+    CHECK_EQ(runAndWait({"sh", "-c", "exit 3"}), 3);
+    CHECK_EQ(runAndWait({"whisker-no-such-command"}), 127);
+    CHECK_EQ(runAndWait({}), -1);
+}
+
 int main() {
     testSplit();
     testSpawnRunsWithoutShell();
+    testRunAndWait();
     return checkReport();
 }

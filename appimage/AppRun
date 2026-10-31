@@ -11,7 +11,7 @@ if [ "$1" = "--install-service" ] || [ "$1" = "-I" ]; then
 fi
 
 case "$1" in
-    --version|-V|--help|-h|--check-config)
+    --version|-V|--help|-h|--check-config|--check-update|--update|--auto-update)
         exec "${APPDIR}/usr/bin/whisker" "$@"
         ;;
 esac

@@ -8,7 +8,7 @@ The playbook for @cgrd. Most of the lifecycle is automated; this lists what runs
 * **Every PR**: the Conventions check (`conventions.yml`: rules, PR title and template, run from the base branch against the PR's objects, plus the risky-change summary), dependency review, CodeQL.
 * **Hourly** (`pr-housekeeping.yml`): closes PRs over the open PR limit (1 until an author has a merged PR, 5 after), labels PRs that conflict with main `needs rebase`, applies path labels.
 * **Merge to main** (`release.yml`): release-please updates an open "chore(main): release x.y.z" PR with the next version and `CHANGELOG.md`, based on the Conventional Commit titles merged since the last release.
-* **Merging the release PR**: release-please tags `vX.Y.Z` and creates the GitHub release. The same workflow builds the assets, waits for approval on the `release` environment, generates build provenance, attaches the zips, `install.sh`, the desktop launchers, `SHA256SUMS` and `Whisker-lgpl-sources.tar`, and puts the install one-liner at the top of the notes.
+* **Merging the release PR**: release-please tags `vX.Y.Z` and creates the GitHub release. The same workflow builds the assets, waits for approval on the `release` environment, generates build provenance, signs `whisker-manifest.json` for the updater ([updates.md](updates.md)), attaches the zips, `install.sh`, the desktop launchers, `SHA256SUMS`, `Whisker-lgpl-sources.tar` and the signed manifest, and puts the install one-liner at the top of the notes.
 * **Weekly**: a build against live Arch packages and transcribe.cpp main opens or updates an issue labeled `scheduled-build` if it fails (`scheduled.yml`). `deps-bump.yml` opens PRs for new transcribe.cpp commits and Dear ImGui releases. Dependabot bumps pinned GitHub Actions. Scorecard and CodeQL run on a schedule.
 * **Daily** (`stale.yml`): issues and PRs labeled `needs-info` get `no-response` after 30 quiet days and close 14 days later; PRs with `needs rebase` get `stale` after 7 quiet days but stay open. Anything labeled `security` or `pinned` is never touched.
 
@@ -55,7 +55,7 @@ Treat every fork PR as untrusted until you've read all of it.
 ## Review checklist
 
 * Correct and minimal; does what the title says
-* Input handling is safe: hidraw report lengths and IDs, evdev events, uinput output (no stuck keys, `releaseAll` on exit), the command socket (only `start`/`stop`/`capture`, bounded buffer), config values, `exec_press`/`exec_release`
+* Input handling is safe: hidraw report lengths and IDs, evdev events, uinput output (no stuck keys, `releaseAll` on exit), the command socket (only `start`/`stop`/`capture`/`status`, bounded buffer), config values, `exec_press`/`exec_release`
 * No new dynamic dependencies. Third-party libraries are linked statically; only system-dependent libraries (glibc, Vulkan, PipeWire, libsystemd, X11/Wayland client libraries) stay dynamic.
 * Works on desktop Linux and the Deck, with capability detection rather than distro or device checks
 * Tests for new pure logic; `make test` passes
@@ -208,6 +208,7 @@ Click in the web UI:
 
 * Settings > Code security: make sure CodeQL "default setup" is off, since `codeql.yml` is the advanced setup
 * Settings > Secrets and variables > Actions: add the `RELEASE_APP_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret (see Release app)
+* Release signing key: run `scripts/gen-signing-key.sh`, put the printed public key into `src/signing_keys.h` and back up the secret key in your password manager ([updates.md](updates.md)). Releases fail until this is done
 * Your account: 2FA with a passkey or security key
 
 ## Follow-ups
