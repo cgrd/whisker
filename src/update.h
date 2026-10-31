@@ -55,6 +55,23 @@ std::string parseManifest(const std::string& json, Manifest& out);
 std::string checkManifest(const Manifest& manifest, const std::string& tag, const std::string& running,
                           const std::string& trusted_comment);
 
+// Verifies release assets downloaded to dir, for install.sh: whisker-manifest.json and its
+// .minisig against public_keys, a trusted comment naming the manifest's version, a version not
+// older than running (equal is a reinstall), and the size and SHA-256 of every other file in dir,
+// each of which the manifest must list. Returns "" or an error; version gets the manifest's version.
+std::string verifyReleaseDir(const std::string& dir, const std::vector<std::string>& public_keys,
+                             const std::string& running, std::string& version);
+
+// Where the previous AppImage is kept while a new one proves it starts: a hidden file next to it.
+std::string appImageBackupPath(const std::string& appimage);
+
+// Seconds the restarted service is watched after an update, sampled once a second.
+constexpr int kRestartWatchSeconds = 12;
+// True if the restarted service was active at every sample. A crash shows up as at least one
+// inactive sample because the unit waits RestartSec=3 before starting it again, and a clean exit
+// leaves it inactive for good. False means the update is rolled back.
+bool restartSurvived(const std::vector<bool>& active_samples);
+
 // Copies an uncompressed (stored) entry out of a zip file to out_path, at most max_size bytes.
 // Deletes out_path on any failure. Returns "" or an error.
 std::string extractStoredZipEntry(const std::string& zip_path, const std::string& entry,

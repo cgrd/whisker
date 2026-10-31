@@ -31,7 +31,9 @@ if [ -f 70-pedal-stt.rules ]; then
     echo ""
     echo "Setting up pedal permissions (needs password)..."
     if command -v pkexec &>/dev/null; then
-        pkexec bash -c "install -Dm644 '$(pwd)/70-pedal-stt.rules' /etc/udev/rules.d/70-pedal-stt.rules && udevadm control --reload-rules"
+        # shellcheck disable=SC2016
+        pkexec /bin/sh -c 'install -Dm644 -- "$1" /etc/udev/rules.d/70-pedal-stt.rules && udevadm control --reload-rules' \
+            sh "$PWD/70-pedal-stt.rules"
     else
         sudo install -Dm644 70-pedal-stt.rules /etc/udev/rules.d/70-pedal-stt.rules
         sudo udevadm control --reload-rules

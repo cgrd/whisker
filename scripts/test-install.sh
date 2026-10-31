@@ -30,15 +30,19 @@ out=$(bash scripts/install.sh 2>&1) || { echo "$out"; fail "install exited non-z
 echo "$out"
 grep -q "Whisker .* is installed" <<<"$out" || fail "install did not end with the installed message"
 grep -q "No speech model yet, and none was downloaded" <<<"$out" || fail "install did not ask to pick a model"
+grep -q "trusts the download" <<<"$out" || fail "a first install without minisign did not say it trusts the download"
 grep -q "Decky's Quick Access menu" <<<"$out" || fail "install did not point Deck users to the Decky panel"
 [ -f "$PLUGIN/models.json" ] || fail "Decky plugin is missing models.json"
 [ -x "$APPIMAGE" ] || fail "AppImage not installed"
 "$APPIMAGE" --version | grep -q '^whisker ' || fail "installed AppImage does not run"
+verify_out=$("$APPIMAGE" --verify-release "$(mktemp -d)" 2>&1) && fail "--verify-release accepted an empty directory"
+grep -q "release verification failed" <<<"$verify_out" || fail "the AppImage does not pass --verify-release on: $verify_out"
 [ -f "$PLUGIN/main.py" ] && [ -f "$PLUGIN/dist/index.js" ] || fail "Decky plugin not installed"
 [ -f "$PLUGIN/LICENSE" ] || fail "Decky plugin is missing its LICENSE"
 [ -f "$HOME/.local/share/applications/whisker.desktop" ] || fail "menu entry missing"
 
-bash scripts/install.sh
+out=$(bash scripts/install.sh 2>&1) || { echo "$out"; fail "reinstall exited non-zero"; }
+grep -q "no signed manifest; trusting these local files" <<<"$out" || fail "reinstall did not go through the installed Whisker"
 [ -x "$APPIMAGE" ] || fail "reinstall broke the AppImage"
 grep -qx "backend: cpu" "$CONFIG" || fail "install touched the user config"
 

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "check.h"
+#include "sha256.h"
 #include "update.h"
 
 #include <monocypher-ed25519.h>
@@ -321,6 +322,88 @@ static void testExtractZip() {
     fs::remove_all(dir);
 }
 
+static std::string sha256Hex(const std::string& data) {
+    Sha256 sha;
+    sha.update(data.data(), data.size());
+    return sha.hexDigest();
+}
+
+static std::string digestJson(const std::string& data) {
+    return "{\"size\": " + std::to_string(data.size()) + ", \"sha256\": \"" + sha256Hex(data) + "\"}";
+}
+
+// A release directory as install.sh downloads it, signed by key.
+static void writeRelease(const fs::path& dir, const TestKey& key, const std::string& version,
+                         const std::string& comment = "") {
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    const std::string zip = "zip bytes", decky = "decky bytes";
+    std::ofstream(dir / kUpdateZipAsset) << zip;
+    std::ofstream(dir / "Whisker-decky.zip") << decky;
+    std::string manifest = "{\"name\": \"whisker\", \"version\": \"" + version + "\", \"assets\": {" +
+                           "\"" + kUpdateZipAsset + "\": " + digestJson(zip) + ", \"Whisker-decky.zip\": " +
+                           digestJson(decky) + "}, \"appimage\": " + digestJson("appimage") + "}\n";
+    std::ofstream(dir / kManifestAsset) << manifest;
+    std::ofstream(dir / (std::string(kManifestAsset) + ".minisig"))
+        << key.sign(manifest, comment.empty() ? "whisker v" + version : comment);
+}
+
+static void testVerifyReleaseDir() {
+    TestKey key(7, "12345678"), other(8, "87654321");
+    std::vector<std::string> keys = {key.publicKey()};
+    fs::path dir = fs::temp_directory_path() / ("whisker-test-release-" + std::to_string(getpid()));
+    std::string version;
+
+    writeRelease(dir, key, "1.4.0");
+    CHECK_EQ(verifyReleaseDir(dir.string(), keys, "1.3.1", version), std::string());
+    CHECK_EQ(version, std::string("1.4.0"));
+    // Reinstalling the same version is fine, going back is not
+    CHECK_EQ(verifyReleaseDir(dir.string(), keys, "1.4.0", version), std::string());
+    CHECK(verifyReleaseDir(dir.string(), keys, "1.5.0", version).find("older") != std::string::npos);
+
+    writeRelease(dir, other, "1.4.0");
+    CHECK(verifyReleaseDir(dir.string(), keys, "1.3.1", version).find("unknown key") != std::string::npos);
+
+    writeRelease(dir, key, "1.4.0", "whisker v1.9.0");
+    CHECK(verifyReleaseDir(dir.string(), keys, "1.3.1", version).find("signed comment") != std::string::npos);
+
+    writeRelease(dir, key, "1.4.0");
+    std::ofstream(dir / "Whisker-decky.zip") << "tampered!!!";
+    CHECK(verifyReleaseDir(dir.string(), keys, "1.3.1", version).find("Whisker-decky.zip") != std::string::npos);
+
+    writeRelease(dir, key, "1.4.0");
+    std::ofstream(dir / "extra.sh") << "echo hi";
+    CHECK(verifyReleaseDir(dir.string(), keys, "1.3.1", version).find("not in the signed manifest") !=
+          std::string::npos);
+
+    writeRelease(dir, key, "1.4.0");
+    fs::remove(dir / "Whisker-decky.zip");
+    fs::create_symlink(dir / kUpdateZipAsset, dir / "Whisker-decky.zip");
+    CHECK(verifyReleaseDir(dir.string(), keys, "1.3.1", version).find("regular file") != std::string::npos);
+
+    writeRelease(dir, key, "1.4.0");
+    fs::remove(dir / (std::string(kManifestAsset) + ".minisig"));
+    CHECK(!verifyReleaseDir(dir.string(), keys, "1.3.1", version).empty());
+
+    writeRelease(dir, key, "1.4.0");
+    fs::remove(dir / kUpdateZipAsset);
+    fs::remove(dir / "Whisker-decky.zip");
+    CHECK(verifyReleaseDir(dir.string(), keys, "1.3.1", version).find("no release files") != std::string::npos);
+    fs::remove_all(dir);
+}
+
+static void testRollbackDecision() {
+    CHECK_EQ(appImageBackupPath("/apps/Whisker-x86_64.AppImage"),
+             std::string("/apps/.Whisker-x86_64.AppImage.previous"));
+    CHECK(restartSurvived(std::vector<bool>(kRestartWatchSeconds, true)));
+    CHECK(!restartSurvived({}));
+    // Crashed and came back after RestartSec, or exited and stayed down
+    CHECK(!restartSurvived({true, true, false, false, false, true, true}));
+    CHECK(!restartSurvived({true, true, true, false}));
+    CHECK(!restartSurvived({false, true, true, true}));
+    CHECK(kRestartWatchSeconds >= 10 && kRestartWatchSeconds <= 15);
+}
+
 static void testSigningKeys() {
     auto keys = releaseSigningKeys();
     CHECK(!keys.empty());
@@ -341,6 +424,8 @@ int main(int argc, char** argv) {
     testParseManifest();
     testCheckManifest();
     testExtractZip();
+    testVerifyReleaseDir();
+    testRollbackDecision();
     testSigningKeys();
     return checkReport();
 }
