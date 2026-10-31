@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/cgrd/whisker/compare/v1.3.0...v1.3.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **decky:** default the backend to CPU on the Deck ([#43](https://github.com/cgrd/whisker/issues/43)) ([3053c5c](https://github.com/cgrd/whisker/commit/3053c5c52a9f3dae8c6e1b8dca3417be8daa0d4f))
+
 ## [1.3.0](https://github.com/cgrd/whisker/compare/v1.2.0...v1.3.0) (2026-10-31)
 
 
