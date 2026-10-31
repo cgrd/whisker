@@ -87,9 +87,12 @@ PEDAL_NAMES = ("left", "center", "right")
 SUBMIT_KEYS = ("none", "enter", "tab")
 BUTTONS = (
     "A", "B", "X", "Y", "L1", "R1", "L2", "R2", "L3", "R3", "L4", "L5", "R4", "R5",
-    "select", "start", "guide", "up", "down", "left", "right",
+    "select", "start", "guide", "assistant", "capture", "up", "down", "left", "right",
 )
 CAPTURE_TIMEOUT_S = 12
+# Must match builtinProfiles() in src/chat_profile.cpp
+BUILTIN_CHAT_PROFILES = ("wow",)
+CHAT_PROFILE_MODES = ("auto", "none", "")
 
 
 def button_chord(path: str, value):
@@ -110,6 +113,13 @@ def parse_capture_reply(line: str) -> dict:
         return {"error": "No button pressed"}
     return {"button": button_chord("capture", chord), "device": device}
 
+def chat_profile_names(config: dict) -> list[str]:
+    custom = config.get("chat_profiles")
+    custom = list(custom) if isinstance(custom, dict) else []
+    return [*BUILTIN_CHAT_PROFILES,
+            *(name for name in custom if name not in (*BUILTIN_CHAT_PROFILES, *CHAT_PROFILE_MODES))]
+
+
 TOP_OPTIONS = {
     "model": str,
     "backend": ("vulkan", "cpu"),
@@ -119,6 +129,7 @@ TOP_OPTIONS = {
     "trigger_mode": ("hold", "toggle"),
     "overlay_position": ("bottom", "top", "bottom-left", "bottom-right", "top-left", "top-right"),
     "submit_key": SUBMIT_KEYS,
+    "chat_profile": str,
     "history": int,
     "noise_threshold": float,
     "overlay": bool,
@@ -300,6 +311,9 @@ class Plugin:
         parts = path.split(".")
         value = _coerce(path, _option_spec(parts), value)
         config = _read_config()
+        # Profiles themselves are config-file only; the plugin just picks one
+        if parts == ["chat_profile"] and value not in (*CHAT_PROFILE_MODES, *chat_profile_names(config)):
+            raise ValueError(f"chat_profile: unknown profile '{value}'")
         node = config
         for part in parts[:-1]:
             if not isinstance(node.get(part), dict):
@@ -307,6 +321,9 @@ class Plugin:
             node = node[part]
         node[parts[-1]] = value
         _write_config(config)
+
+    async def get_chat_profiles(self) -> list[str]:
+        return chat_profile_names(_read_config())
 
     async def get_audio_sources(self) -> list[dict]:
         _, output = await _run(["pactl", "list", "sources"])

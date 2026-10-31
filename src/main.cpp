@@ -15,6 +15,7 @@
 #include "tray.h"
 #include "command.h"
 #include "spawn.h"
+#include "processes.h"
 #include <algorithm>
 #include <csignal>
 #include <cstdio>
@@ -45,6 +46,30 @@ static bool needsTranscribe(const Config& cfg) {
     for (auto& p : cfg.pedals)
         if (p.action == PedalAction::Transcribe) return true;
     return false;
+}
+
+static void pressOpenKey(const std::string& key, VirtualKeyboard& keyboard) {
+    auto combo = VirtualKeyboard::parseCombo(key);
+    if (combo.empty()) return;
+    keyboard.emitCombo(combo, true);
+    keyboard.emitCombo(combo, false);
+    // A game may open the chat box a frame later and drop keys typed before it appears
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+}
+
+static bool selectChatProfile(const Config& cfg, ChatProfile& profile) {
+    bool automatic = cfg.chat_profile == kChatProfileAuto;
+    if (!automatic && chatProfileOff(cfg.chat_profile))
+        return false;
+    std::string name = automatic ? autoChatProfile(cfg.chat_profiles, readUserProcesses()) : cfg.chat_profile;
+    if (name.empty())
+        return false;
+    if (!resolveChatProfile(name, cfg.chat_profiles, profile)) {
+        fprintf(stderr, "whisker: unknown chat_profile \"%s\"\n", name.c_str());
+        return false;
+    }
+    fprintf(stderr, "whisker: chat profile %s%s\n", name.c_str(), automatic ? " (auto)" : "");
+    return true;
 }
 
 static void outputText(const std::string& text, OutputMode mode, VirtualKeyboard& keyboard) {
@@ -203,15 +228,17 @@ static void doTranscribe(const PedalConfig& pcfg, AudioCapture& audio, SpeechToT
 
     std::string text = stt.transcribe(samples);
     if (!text.empty()) {
-        if (cfg.dictation_commands)
-            text = processDictation(text);
-        if (cfg.auto_capitalize)
-            text = autoCapitalize(text);
+        ChatProfile profile;
+        bool chat = selectChatProfile(cfg, profile);
+        bool switch_only = chat && chatSwitchOnly(profile, text);
+        text = formatTranscript(text, chat ? &profile : nullptr, cfg.dictation_commands, cfg.auto_capitalize);
         fprintf(stderr, "whisker: \"%s\"\n", text.c_str());
         if (has_overlay) overlay.updateText(text);
+        if (chat && pcfg.output != OutputMode::Clipboard)
+            pressOpenKey(profile.open_key, keyboard);
         outputText(text, pcfg.output, keyboard);
         last_typed_len = static_cast<int>(text.size());
-        std::string submit = effectiveSubmitKey(cfg, pcfg, text);
+        std::string submit = switch_only ? "" : effectiveSubmitKey(cfg, pcfg, text);
         if (!submit.empty()) {
             auto combo = VirtualKeyboard::parseCombo(submit);
             if (!combo.empty()) {
@@ -239,6 +266,30 @@ static bool comboValid(const char* what, const std::string& combo) {
     return false;
 }
 
+static bool chatProfileValid(const Config& cfg) {
+    bool ok = true;
+    for (const auto& [name, profile] : cfg.chat_profiles) {
+        if (chatProfileReserved(name)) {
+            fprintf(stderr, "whisker: chat_profiles.%s: reserved name\n", name.c_str());
+            ok = false;
+        }
+        ok = comboValid(("chat_profiles." + name + ".open_key").c_str(), profile.open_key) && ok;
+        for (const auto& ch : profile.channels) {
+            if (ch.command.empty() || ch.say.empty()) {
+                fprintf(stderr, "whisker: chat_profiles.%s.channels.%s: needs a command and say\n",
+                        name.c_str(), ch.name.c_str());
+                ok = false;
+            }
+        }
+    }
+    ChatProfile profile;
+    if (!chatProfileReserved(cfg.chat_profile) && !resolveChatProfile(cfg.chat_profile, cfg.chat_profiles, profile)) {
+        fprintf(stderr, "whisker: chat_profile: unknown profile \"%s\"\n", cfg.chat_profile.c_str());
+        ok = false;
+    }
+    return ok;
+}
+
 // Parses the config and key combos without touching any device, for CI and bug reports.
 static int checkConfig(const std::string& path) {
     Config cfg = loadConfig(path);
@@ -255,6 +306,7 @@ static int checkConfig(const std::string& path) {
     for (int i = 0; i < 3; ++i)
         if (cfg.pedals[i].action == PedalAction::Key)
             ok = comboValid(names[i], cfg.pedals[i].key) && ok;
+    ok = chatProfileValid(cfg) && ok;
     printf("%s\n", ok ? "ok" : "errors found");
     return ok ? 0 : 1;
 }

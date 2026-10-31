@@ -74,6 +74,48 @@ Change settings from the Whisker entry in your app menu or tray icon, or from De
 
 If something doesn't work, see [docs/troubleshooting.md](docs/troubleshooting.md).
 
+## Game chat
+
+Whisker talks in World of Warcraft chat on its own while the game runs. When you press the trigger, it opens the chat box with Enter, then types the message with the channel shortcut your first words name:
+
+| Say | Types |
+|---|---|
+| "party, pull in five" | `/p Pull in five` |
+| "guild chat anyone up for a raid" | `/g Anyone up for a raid` |
+| "raid warning stack up" | `/rw Stack up` |
+| "whisper Thrall need a summon" | `/w Thrall Need a summon` |
+| "slash p ready" | `/p Ready` |
+
+Channels: say, yell, emote, party, instance, raid, raid warning, guild, officer, whisper (also "tell"), reply, general (`/1`) and trade (`/2`). "slash" followed by anything types that shortcut, so "slash dance" types `/dance`. Without a channel the text goes to the channel the chat box was last on. Set `submit_key: enter` to send the message too. A channel on its own ("party") only switches the open chat box and never submits, so you can dictate the message next.
+
+`chat_profile` picks the profile: `auto` (the default) uses the first profile whose `match` patterns hit a running process of yours and changes nothing otherwise, `none` turns game chat off, and a profile name such as `wow` always uses that profile. Pick it on the settings window's Audio page or in the Decky plugin too. Whisker only looks at your processes when you press the trigger; it never polls. In auto it checks your profiles in config order, then the built-in ones, and logs the profile it picked (`chat profile wow (auto)`).
+
+A pattern without a slash matches the program's file name, ignoring case, so `Wow.exe` matches World of Warcraft under Proton or Wine. A pattern with `/` or `\` matches part of the full command line, so `_forever_/Wow.exe` tells WoW Forever apart from retail, which are both `Wow.exe`. The built-in `wow` profile matches `Wow.exe`, `WowClassic.exe`, `WowB.exe`, `WowT.exe`, `WowClassicB.exe` and `WowClassicT.exe`.
+
+Character names often come out wrong, so map how you say them to how they're spelled, and add profiles for other games, in `~/.config/pedal-stt/config.yaml`:
+
+```yaml
+chat_profile: auto
+chat_profiles:
+  wow:
+    names:
+      thrall: Thrall
+      jaina proudmoore: Jaina
+  ffxiv:
+    open_key: enter
+    match: ffxiv_dx11.exe
+    channels:
+      free_company:
+        command: /fc
+        say: free company, fc
+      tell:
+        command: /tell
+        say: tell, whisper
+        target: true
+```
+
+`open_key` is pressed before typing. `match` lists the processes that select the profile in auto. `say` lists the spoken lead-ins; the longest one that matches wins. With `target: true` the next word, or a spoken form from `names`, is the recipient. A custom `wow` profile adds to the built-in one (names and match patterns too), and its channels replace built-in channels with the same name. `auto` and `none` can't be profile names. The Decky plugin and the settings window only pick the profile; edit profiles in the config file.
+
 ## Controllers
 
 `trigger_button` works on every connected controller, including ones you turn on after Whisker starts. Set it to one button or a chord of buttons joined with `+`:
@@ -83,7 +125,7 @@ trigger_button: L5      # lower left back button
 trigger_button: L3+R3   # both stick clicks, for controllers without back buttons
 ```
 
-A chord starts recording when all its buttons are down on the same controller and stops when any of them comes up. Button names: `A`, `B`, `X`, `Y`, `L1`, `R1`, `L2`, `R2`, `L3`, `R3`, `L4`, `L5`, `R4`, `R5`, `select`, `start`, `guide`, `up`, `down`, `left`, `right`. `L4`/`R4` are the upper back buttons and `L5`/`R5` the lower ones, the same names Steam uses.
+A chord starts recording when all its buttons are down on the same controller and stops when any of them comes up. Button names: `A`, `B`, `X`, `Y`, `L1`, `R1`, `L2`, `R2`, `L3`, `R3`, `L4`, `L5`, `R4`, `R5`, `select`, `start`, `guide`, `assistant`, `capture`, `up`, `down`, `left`, `right`. `L4`/`R4` are the upper back buttons and `L5`/`R5` the lower ones, the same names Steam uses. `assistant` and `capture` are the two middle buttons on the Google Stadia controller, which no game binds.
 
 The easiest way to pick one is "Press the button you want" on the settings window's Triggers page or in the Decky plugin: press and release the button or chord on any controller and Whisker saves it.
 
@@ -94,6 +136,7 @@ The easiest way to pick one is "Press the button you want" on the settings windo
 | Steam Controller (2026) over Bluetooth or the Steam Machine receiver | hidraw | untested |
 | Steam Controller (2015), wired or dongle | hidraw | untested, no rumble |
 | Xbox, PlayStation and other gamepads with a Linux driver | evdev | untested; back paddles need Linux 6.17 or newer, except Xbox Elite |
+| Google Stadia controller, USB or Bluetooth | evdev | untested; Assistant and Capture buttons as `assistant` and `capture` |
 
 The recording start and stop rumble goes to the controller you pressed. To add a controller, see [docs/controllers.md](docs/controllers.md).
 

@@ -53,11 +53,26 @@ static void testAutoCapitalize() {
     CHECK_EQ(autoCapitalize("Already Fine."), "Already Fine.");
 }
 
+static void testFormatTranscript() {
+    CHECK_EQ(formatTranscript("hello comma world", nullptr, true, true), "Hello, world");
+    CHECK_EQ(formatTranscript("Party, pull in five.", nullptr, true, true), "Party, pull in five.");
+
+    ChatProfile wow;
+    CHECK(resolveChatProfile("wow", {}, wow));
+    CHECK_EQ(formatTranscript("Party, pull in five.", &wow, true, true), "/p Pull in five.");
+    CHECK_EQ(formatTranscript("slash p ready period", &wow, true, true), "/p Ready.");
+    CHECK_EQ(formatTranscript("Whisper thrall ready period", &wow, true, true), "/w thrall Ready.");
+    CHECK_EQ(formatTranscript("guild chat hi", &wow, false, false), "/g hi");
+    CHECK_EQ(formatTranscript("party", &wow, true, true), "/p ");
+    CHECK_EQ(formatTranscript("hello there", &wow, true, true), "Hello there");
+}
+
 int main() {
     testEveryCommand();
     testCombinations();
     testEdges();
     testCaseInsensitive();
     testAutoCapitalize();
+    testFormatTranscript();
     return checkReport();
 }

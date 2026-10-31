@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 
 static std::string g_dir;
@@ -148,6 +149,87 @@ static void testSaveLoadRoundTrip() {
     CHECK_EQ(out.pedals[2].exec_release, "echo b");
 }
 
+static void testParseChatProfiles() {
+    Config none = loadConfig(writeFile("nochat.yaml", "submit_key: enter\n"));
+    CHECK_EQ(none.chat_profile, "auto");
+    CHECK(none.chat_profiles.empty());
+    CHECK_EQ(loadConfig(writeFile("chatoff.yaml", "chat_profile: \"\"\n")).chat_profile, "");
+    CHECK_EQ(loadConfig(writeFile("chatnone.yaml", "chat_profile: none\n")).chat_profile, "none");
+
+    Config cfg = loadConfig(writeFile("chat.yaml",
+        "chat_profile: ffxiv\n"
+        "chat_profiles:\n"
+        "  ffxiv:\n"
+        "    open_key: space\n"
+        "    match: ffxiv_dx11.exe, \"SquareEnix\\FINAL FANTASY XIV\"\n"
+        "    channels:\n"
+        "      fc:\n"
+        "        command: \"/fc\"\n"
+        "        say: [free company, \"fc\"]\n"
+        "      tell:\n"
+        "        command: /tell\n"
+        "        say: tell, whisper\n"
+        "        target: true\n"
+        "    names:\n"
+        "      y shtola: \"Y'shtola Rhul\"\n"
+        "  wow:\n"
+        "    names:\n"
+        "      thrall: Thrall\n"
+        "pedals:\n"
+        "  center:\n"
+        "    action: transcribe\n"));
+    CHECK_EQ(cfg.chat_profile, "ffxiv");
+    CHECK_EQ(cfg.chat_profiles.size(), 2u);
+    const ChatProfile& ff = cfg.chat_profiles["ffxiv"];
+    CHECK_EQ(ff.open_key, "space");
+    CHECK_EQ(ff.match.size(), 2u);
+    CHECK_EQ(ff.match[0], "ffxiv_dx11.exe");
+    CHECK_EQ(ff.match[1], "SquareEnix\\FINAL FANTASY XIV");
+    CHECK_EQ(ff.channels.size(), 2u);
+    CHECK_EQ(ff.channels[0].name, "fc");
+    CHECK_EQ(ff.channels[0].command, "/fc");
+    CHECK_EQ(ff.channels[0].say.size(), 2u);
+    CHECK_EQ(ff.channels[0].say[0], "free company");
+    CHECK_EQ(ff.channels[0].say[1], "fc");
+    CHECK(!ff.channels[0].target);
+    CHECK_EQ(ff.channels[1].command, "/tell");
+    CHECK(ff.channels[1].target);
+    CHECK_EQ(ff.names.size(), 1u);
+    CHECK_EQ(ff.names[0].first, "y shtola");
+    CHECK_EQ(ff.names[0].second, "Y'shtola Rhul");
+    CHECK_EQ(cfg.chat_profiles["wow"].names[0].second, "Thrall");
+    CHECK(cfg.pedals[1].action == PedalAction::Transcribe);
+
+    std::string path = g_dir + "/chat-roundtrip.yaml";
+    saveConfig(cfg, path);
+    Config out = loadConfig(path);
+    CHECK_EQ(out.chat_profile, "ffxiv");
+    CHECK_EQ(out.chat_profiles.size(), 2u);
+    const ChatProfile& ff2 = out.chat_profiles["ffxiv"];
+    CHECK_EQ(ff2.open_key, "space");
+    CHECK_EQ(ff2.match.size(), 2u);
+    CHECK_EQ(ff2.match[1], "SquareEnix\\FINAL FANTASY XIV");
+    CHECK_EQ(out.chat_profiles.begin()->first, "ffxiv");
+    CHECK_EQ(ff2.channels.size(), 2u);
+    CHECK_EQ(ff2.channels[0].say.size(), 2u);
+    CHECK_EQ(ff2.channels[0].say[0], "free company");
+    CHECK_EQ(ff2.channels[1].command, "/tell");
+    CHECK(ff2.channels[1].target);
+    CHECK_EQ(ff2.names[0].second, "Y'shtola Rhul");
+    CHECK_EQ(out.chat_profiles["wow"].names[0].first, "thrall");
+    CHECK(out.pedals[1].action == PedalAction::Transcribe);
+
+    saveConfig(Config{}, path);
+    std::ifstream f(path);
+    std::string saved((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    CHECK(saved.find("chat_profile") == std::string::npos);
+
+    Config off;
+    off.chat_profile = "";
+    saveConfig(off, path);
+    CHECK_EQ(loadConfig(path).chat_profile, "none");
+}
+
 static void testEffectiveSubmitKey() {
     Config cfg;
     PedalConfig pedal;
@@ -177,6 +259,7 @@ int main() {
     testParseTopLevel();
     testParsePedals();
     testSaveLoadRoundTrip();
+    testParseChatProfiles();
     testEffectiveSubmitKey();
     std::filesystem::remove_all(g_dir);
     return checkReport();

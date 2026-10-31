@@ -25,6 +25,7 @@ constexpr Name kNames[] = {
     {kButtonL3, "L3"}, {kButtonR3, "R3"},
     {kButtonL4, "L4"}, {kButtonL5, "L5"}, {kButtonR4, "R4"}, {kButtonR5, "R5"},
     {kButtonSelect, "select"}, {kButtonStart, "start"}, {kButtonGuide, "guide"},
+    {kButtonAssistant, "assistant"}, {kButtonCapture, "capture"},
     {kButtonUp, "up"}, {kButtonDown, "down"}, {kButtonLeft, "left"}, {kButtonRight, "right"},
 };
 
@@ -112,6 +113,7 @@ Button lookupName(const std::string& name) {
 }
 
 constexpr uint16_t kMicrosoftVendor = 0x045E;
+constexpr uint16_t kGoogleVendor = 0x18D1;
 
 Button evdevKey(uint16_t code, uint16_t vendor) {
     switch (code) {
@@ -145,6 +147,13 @@ Button evdevKey(uint16_t code, uint16_t vendor) {
         case BTN_TRIGGER_HAPPY6: return kButtonR5;
         case BTN_TRIGGER_HAPPY7: return kButtonL4;
         case BTN_TRIGGER_HAPPY8: return kButtonL5;
+        }
+    }
+    // Stadia Assistant and Capture; other drivers use these codes for unrelated buttons.
+    if (vendor == kGoogleVendor) {
+        switch (code) {
+        case BTN_TRIGGER_HAPPY1: return kButtonAssistant;
+        case BTN_TRIGGER_HAPPY2: return kButtonCapture;
         }
     }
     return Button(0);

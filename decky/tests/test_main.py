@@ -121,6 +121,10 @@ def test_set_option_coerces_numbers(config_path):
     ("trigger_button", "L3+"),
     ("trigger_button", "l5"),
     ("trigger_button", 5),
+    ("chat_profile", "wwo"),
+    ("chat_profile", 1),
+    ("chat_profiles.wow.open_key", "enter"),
+    ("chat_profiles.wow.channels.party.command", "/p"),
 ])
 def test_set_option_rejects_invalid(config_path, path, value):
     with pytest.raises(ValueError):
@@ -136,6 +140,77 @@ def test_set_option_keeps_exec_commands_from_the_config_file(config_path):
     assert right == {"action": "exec", "exec_press": "notify-send hi", "mode": "tap"}
 
 
+CHAT_SAMPLE = SAMPLE + """\
+chat_profile: wow
+chat_profiles:
+  wow:
+    names:
+      thrall: Thrall
+      jaina proudmoore: "Jaina"
+  ffxiv:
+    open_key: enter
+    match: "ffxiv_dx11.exe, SquareEnix/FINAL FANTASY XIV"
+    channels:
+      free_company:
+        command: /fc
+        say: "free company, fc"
+      tell:
+        command: "/tell"
+        say: [tell, whisper]
+        target: true
+"""
+
+
+def test_parse_chat_profiles_block():
+    data = main.parse_yaml(CHAT_SAMPLE)
+    assert data["chat_profile"] == "wow"
+    assert data["chat_profiles"]["wow"] == {"names": {"thrall": "Thrall", "jaina proudmoore": "Jaina"}}
+    ffxiv = data["chat_profiles"]["ffxiv"]
+    assert ffxiv["open_key"] == "enter"
+    assert ffxiv["match"] == "ffxiv_dx11.exe, SquareEnix/FINAL FANTASY XIV"
+    assert ffxiv["channels"]["free_company"] == {"command": "/fc", "say": "free company, fc"}
+    assert ffxiv["channels"]["tell"] == {"command": "/tell", "say": "[tell, whisper]", "target": True}
+    assert data["pedals"] == main.parse_yaml(SAMPLE)["pedals"]
+
+
+def test_chat_profiles_round_trip():
+    data = main.parse_yaml(CHAT_SAMPLE)
+    assert main.parse_yaml(main.serialize_yaml(data)) == data
+
+
+def test_set_chat_profile_keeps_profiles_and_pedals(config_path):
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(CHAT_SAMPLE)
+    before = main.parse_yaml(CHAT_SAMPLE)
+    set_option("chat_profile", "ffxiv")
+    set_option("submit_key", "enter")
+    data = main.parse_yaml(config_path.read_text())
+    assert data["chat_profile"] == "ffxiv"
+    assert data["chat_profiles"] == before["chat_profiles"]
+    assert data["pedals"] == before["pedals"]
+    set_option("chat_profile", "")
+    assert main.parse_yaml(config_path.read_text())["chat_profile"] == ""
+    for mode in ("auto", "none"):
+        set_option("chat_profile", mode)
+        data = main.parse_yaml(config_path.read_text())
+        assert data["chat_profile"] == mode
+        assert data["chat_profiles"] == before["chat_profiles"]
+
+
+def test_chat_profile_must_exist(config_path):
+    set_option("chat_profile", "wow")
+    with pytest.raises(ValueError):
+        set_option("chat_profile", "ffxiv")
+    assert main.parse_yaml(config_path.read_text())["chat_profile"] == "wow"
+
+
+def test_chat_profile_names(config_path):
+    assert main.chat_profile_names({}) == ["wow"]
+    assert main.chat_profile_names(main.parse_yaml(CHAT_SAMPLE)) == ["wow", "ffxiv"]
+    assert asyncio.run(main.Plugin().get_chat_profiles()) == ["wow"]
+    assert main.chat_profile_names({"chat_profiles": {"auto": {}, "none": {}, "eso": {}}}) == ["wow", "eso"]
+
+
 def test_user_env_points_at_the_user_session():
     env = main._user_env()
     runtime = f"/run/user/{main.os.getuid()}"
@@ -143,7 +218,10 @@ def test_user_env_points_at_the_user_session():
     assert env["DBUS_SESSION_BUS_ADDRESS"] == f"unix:path={runtime}/bus"
 
 
-@pytest.mark.parametrize("value, stored", [("L5", "L5"), ("L3+R3", "L3+R3"), ("L1 + R1", "L1+R1"), ("", "")])
+@pytest.mark.parametrize("value, stored", [
+    ("L5", "L5"), ("L3+R3", "L3+R3"), ("L1 + R1", "L1+R1"), ("capture", "capture"),
+    ("assistant+capture", "assistant+capture"), ("", ""),
+])
 def test_set_option_accepts_buttons_and_chords(config_path, value, stored):
     set_option("trigger_button", value)
     assert main.parse_yaml(config_path.read_text())["trigger_button"] == stored

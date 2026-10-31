@@ -212,6 +212,8 @@ target_include_directories(whisker_protocol PUBLIC ${PROTO_GEN_DIR} ${WAYLAND_CL
 add_executable(whisker
     src/main.cpp
     src/config.cpp
+    src/chat_profile.cpp
+    src/processes.cpp
     src/pedal.cpp
     src/keyboard.cpp
     src/hotkey.cpp
