@@ -18,7 +18,7 @@ What to expect:
 
 ## Scope
 
-Whisker reads input devices (hidraw, evdev), creates a virtual keyboard through uinput, listens on a Unix socket in `$XDG_RUNTIME_DIR` and runs commands you configure for pedals. Bugs that let another user or a remote party trigger typing, run commands or read audio are in scope. So are problems in the install script, the updater, release artifacts and the Decky plugin, which runs as root.
+Whisker reads input devices (hidraw, evdev), creates a virtual keyboard through uinput, listens on a Unix socket in `$XDG_RUNTIME_DIR` (only if that directory is the user's own with mode 0700; there's no `/tmp` fallback) and runs commands you configure for pedals. Bugs that let another user or a remote party trigger typing, run commands or read audio are in scope. So are problems in the install script, the updater, release artifacts and the Decky plugin. The plugin's backend runs as the `deck` user, not root; only installing or removing it needs sudo, because Decky's plugin folder belongs to root.
 
 The speech model is downloaded from Hugging Face and isn't covered by this policy.
 
@@ -34,5 +34,7 @@ gh attestation verify Whisker-x86_64.AppImage.zip --repo cgrd/whisker
 ## Signed updates
 
 `SHA256SUMS` and the assets come from the same place, so someone who can publish a release could replace both. The updater doesn't trust them. It installs only what `whisker-manifest.json` describes, and only if that manifest carries a minisign (Ed25519) signature from a public key compiled into the running Whisker. The secret key lives only in a GitHub Actions secret of the approval-gated `release` environment and in the maintainer's password manager. The signed manifest names its version, which must match the release tag and be newer than the running version, so an old release can't be replayed to downgrade anyone.
+
+The installer checks the same manifest. Over an existing install it asks the installed Whisker (`--verify-release`) to verify the signature and every downloaded file, including the Decky plugin, before replacing anything, and stops if that fails. A first install has no Whisker to ask: it checks the signature with `minisign` when that's installed, and otherwise trusts what it downloaded from GitHub, like any `curl | bash`, and says so.
 
 Verify a manifest by hand with `minisign -V -P <key from src/signing_keys.h> -m whisker-manifest.json`. Key rotation and the full update flow are in [docs/updates.md](docs/updates.md).
