@@ -85,7 +85,7 @@ Versions follow semver; release-please derives them from PR titles (`fix` bumps 
 
 To rebuild assets for an existing tag, run the Release workflow manually with that tag.
 
-PRs opened with the default `GITHUB_TOKEN` count as coming from an outside contributor, so their CI waits for "Approve and run" and the Conventions check never starts. The workflows use the release app token to avoid that (see Release app). The Conventions check skips the template for release-please's own PR.
+PRs opened with the default `GITHUB_TOKEN` count as coming from an outside contributor, so their CI waits for "Approve and run" and the Conventions check never starts. The workflows use the release app token to avoid that (see Release app). release-please's own PR fills in the template through `pull-request-header` and `pull-request-footer` in `release-please-config.json`, so it passes the Conventions check like any other PR.
 
 ### Release app
 

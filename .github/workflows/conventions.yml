@@ -36,11 +36,10 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           printf '%s' "$PR_BODY" > "$RUNNER_TEMP/body.md"
           python3 -I scripts/check_conventions.py --base "$BASE_SHA" --head "$HEAD_SHA" \
-            --pr-title "$PR_TITLE" --pr-body-file "$RUNNER_TEMP/body.md" --pr-author "$PR_AUTHOR"
+            --pr-title "$PR_TITLE" --pr-body-file "$RUNNER_TEMP/body.md"
       - name: Summarize changes that need extra review
         if: always()
         env:

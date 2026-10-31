@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: MIT
+import json
 import sys
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
 
 from check_conventions import (  # noqa: E402
     doc_link_problems,
@@ -115,11 +117,13 @@ def test_pull_request_template():
         ["pr-template", "pr-template"]
 
 
-def test_release_please_pr_skips_the_template():
-    body = ":robot: I have created a release *beep* *boop*"
-    assert pr_problems("chore(main): release 1.2.0", body, "github-actions[bot]") == []
-    assert rules(pr_problems("chore(main): release 1.2.0", body, "someone")) == ["pr-template"] * 3
-    assert rules(pr_problems("chore: something else", body, "github-actions[bot]")) == ["pr-template"] * 3
+def test_release_please_pr_follows_the_template():
+    config = json.loads((ROOT / "release-please-config.json").read_text())
+    notes = "## [1.3.1](https://example.invalid) (2026-10-31)\n\n\n### Bug Fixes\n\n* **decky:** a fix"
+    body = f"{config['pull-request-header']}\n---\n\n\n{notes}\n\n---\n{config['pull-request-footer']}"
+    assert pr_problems("chore(main): release 1.3.1", body) == []
+    bare = ":robot: I have created a release *beep* *boop*"
+    assert rules(pr_problems("chore(main): release 1.3.1", bare)) == ["pr-template"] * 3
 
 
 def test_fixes_accepts_several_issues():
