@@ -54,6 +54,17 @@ std::string modelUserAgent() {
     return std::string("Whisker/") + kWhiskerVersion + " (+https://github.com/cgrd/whisker)";
 }
 
+std::vector<std::string> curlCommand(const std::vector<std::string>& args) {
+    // -q only works as the first argument
+    std::vector<std::string> full = {"curl", "-q", "-fsS", "--retry", "1", "--proto-redir", "=https",
+                                     "--connect-timeout", std::to_string(kCurlConnectSeconds),
+                                     "--speed-limit", std::to_string(kCurlMinBytesPerSecond),
+                                     "--speed-time", std::to_string(kCurlStallSeconds),
+                                     "-A", modelUserAgent()};
+    full.insert(full.end(), args.begin(), args.end());
+    return full;
+}
+
 // Runs curl with the shared safety options. curl retries a transient failure once and nothing
 // loops around it. stdout goes to *out when given. Returns "" or an error.
 static std::string runCurl(const std::vector<std::string>& args, std::string* out) {
@@ -65,9 +76,7 @@ static std::string runCurl(const std::vector<std::string>& args, std::string* ou
         close(err_pipe[1]);
         return std::string("cannot start curl: ") + strerror(errno);
     }
-    std::string agent = modelUserAgent();
-    std::vector<std::string> full = {"curl", "-fsS", "--retry", "1", "--proto-redir", "=https", "-A", agent};
-    full.insert(full.end(), args.begin(), args.end());
+    std::vector<std::string> full = curlCommand(args);
     std::vector<char*> argv;
     for (auto& a : full) argv.push_back(a.data());
     argv.push_back(nullptr);
@@ -102,15 +111,17 @@ static std::string runCurl(const std::vector<std::string>& args, std::string* ou
     return output.substr(output.rfind('\n') + 1);
 }
 
-std::string downloadFile(const std::string& url, const std::string& path, uint64_t max_bytes) {
+std::string downloadFile(const std::string& url, const std::string& path, uint64_t max_bytes, int max_seconds) {
     std::vector<std::string> args = {"-L", "-o", path};
     if (max_bytes > 0) args.insert(args.end(), {"--max-filesize", std::to_string(max_bytes)});
+    if (max_seconds > 0) args.insert(args.end(), {"--max-time", std::to_string(max_seconds)});
     args.push_back(url);
     return runCurl(args, nullptr);
 }
 
 std::string fetchRedirect(const std::string& url, std::string& location) {
-    return runCurl({"-o", "/dev/null", "-w", "%{redirect_url}", url}, &location);
+    return runCurl({"--max-time", std::to_string(kCurlSmallMaxSeconds), "-o", "/dev/null", "-w", "%{redirect_url}", url},
+                   &location);
 }
 
 std::string installVerified(const std::string& tmp, const std::string& dest, uint64_t size,

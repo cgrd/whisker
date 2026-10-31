@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "update.h"
+#include "sha256.h"
 #include "signing_keys.h"
 
 #include <monocypher-ed25519.h>
@@ -9,6 +10,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <unistd.h>
@@ -455,6 +457,61 @@ std::string checkManifest(const Manifest& manifest, const std::string& tag, cons
     if (zip->second.size > kMaxUpdateBytes || manifest.appimage.size > kMaxUpdateBytes)
         return "the update is larger than the " + std::to_string(kMaxUpdateBytes >> 20) + " MiB limit";
     return "";
+}
+
+std::string verifyReleaseDir(const std::string& dir, const std::vector<std::string>& public_keys,
+                             const std::string& running, std::string& version) {
+    namespace fs = std::filesystem;
+    const std::string signature_name = std::string(kManifestAsset) + ".minisig";
+    std::string manifest_text, signature;
+    if (!readFile(dir + "/" + kManifestAsset, manifest_text, kMaxManifestBytes))
+        return std::string("cannot read ") + kManifestAsset;
+    if (!readFile(dir + "/" + signature_name, signature, kMaxSignatureBytes)) return "cannot read " + signature_name;
+
+    std::string trusted_comment;
+    std::string error = verifyMinisign(manifest_text, signature, public_keys, trusted_comment);
+    if (!error.empty()) return "the release manifest is not trusted: " + error;
+    Manifest manifest;
+    error = parseManifest(manifest_text, manifest);
+    if (!error.empty()) return error;
+    if (trusted_comment != "whisker v" + manifest.version)
+        return "the signed comment '" + trusted_comment + "' does not name release v" + manifest.version;
+    Version manifest_version, running_version;
+    parseVersion(manifest.version, manifest_version);
+    if (!parseVersion(running, running_version)) return "cannot read the running version '" + running + "'";
+    if (manifest_version < running_version)
+        return "the release " + manifest.version + " is older than the installed " + running;
+
+    std::vector<fs::path> files;
+    std::error_code ec;
+    for (const auto& entry : fs::directory_iterator(dir, ec)) {
+        std::string name = entry.path().filename().string();
+        if (name != kManifestAsset && name != signature_name) files.push_back(entry.path());
+    }
+    if (ec) return "cannot list " + dir + ": " + ec.message();
+    if (files.empty()) return "there are no release files to verify";
+    for (const auto& path : files) {
+        std::string name = path.filename().string();
+        auto asset = manifest.assets.find(name);
+        if (asset == manifest.assets.end()) return name + " is not in the signed manifest";
+        if (!fs::is_regular_file(fs::symlink_status(path, ec))) return name + " is not a regular file";
+        if (fs::file_size(path, ec) != asset->second.size || ec) return name + " has the wrong size";
+        if (sha256File(path.string()) != asset->second.sha256) return name + " does not match its SHA-256";
+    }
+    version = manifest.version;
+    return "";
+}
+
+std::string appImageBackupPath(const std::string& appimage) {
+    size_t slash = appimage.rfind('/');
+    return appimage.substr(0, slash + 1) + "." + appimage.substr(slash + 1) + ".previous";
+}
+
+bool restartSurvived(const std::vector<bool>& active_samples) {
+    if (active_samples.empty()) return false;
+    for (bool active : active_samples)
+        if (!active) return false;
+    return true;
 }
 
 std::string extractStoredZipEntry(const std::string& zip_path, const std::string& entry,

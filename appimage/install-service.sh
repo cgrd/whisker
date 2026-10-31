@@ -1,5 +1,8 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
+set -eu
+
+UDEV_RULE=/etc/udev/rules.d/70-whisker.rules
 
 APPIMAGE_PATH="${APPIMAGE:-$HOME/Applications/Whisker-x86_64.AppImage}"
 APPIMAGE_PATH="$(readlink -f "$APPIMAGE_PATH")"
@@ -33,6 +36,8 @@ After=network-online.target
 [Service]
 Type=oneshot
 ExecStart=${APPIMAGE_PATH} --auto-update
+# A stalled download must not hold the update lock forever; covers curl's own limits (src/models.h)
+TimeoutStartSec=80min
 Environment=WHISKER_SERVICE=1
 EOF
 cat > "$HOME/.config/systemd/user/whisker-update.timer" <<EOF
@@ -55,10 +60,20 @@ systemctl --user enable --now whisker-update.timer
 
 systemctl --user import-environment WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS 2>/dev/null || true
 
+# Root can't read another user's FUSE mount, so the rule goes through a private copy. The path is
+# passed as an argument, never spliced into the root shell command.
+install_udev_rule() {
+    local src="$1" dir
+    dir=$(mktemp -d)
+    install -m644 -- "$src" "$dir/70-whisker.rules"
+    # shellcheck disable=SC2016
+    pkexec /bin/sh -c 'install -Dm644 -- "$1" "$2" && udevadm control --reload-rules' sh \
+        "$dir/70-whisker.rules" "$UDEV_RULE" \
+        || echo "whisker: the foot pedal udev rule was not installed; rerun --install-service to retry" >&2
+    rm -rf -- "$dir"
+}
+
 RULES_SRC="${APPDIR:-$(dirname "$(readlink -f "$0")")}/70-whisker.rules"
-if [ -f "$RULES_SRC" ] && [ ! -f /etc/udev/rules.d/70-whisker.rules ]; then
-    TMP_RULES="/tmp/whisker-udev-$$.rules"
-    cp "$RULES_SRC" "$TMP_RULES"
-    chmod 644 "$TMP_RULES"
-    pkexec bash -c "install -Dm644 '$TMP_RULES' /etc/udev/rules.d/70-whisker.rules && udevadm control --reload-rules && rm -f '$TMP_RULES'"
+if [ -f "$RULES_SRC" ] && [ ! -f "$UDEV_RULE" ]; then
+    install_udev_rule "$RULES_SRC"
 fi

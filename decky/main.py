@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: MIT
 import asyncio
+import contextlib
 import hashlib
 import json
 import os
 import re
+import signal
 from pathlib import Path
 
 import decky
@@ -46,8 +48,10 @@ USER_AGENT = f"Whisker/{_plugin_version()} (+https://github.com/cgrd/whisker)"
 
 
 def curl_download_args(url: str, dest: Path) -> list[str]:
-    # One retry on a transient error; a failed download stops until the user starts it again
-    return ["curl", "-fsSL", "--retry", "1", "-A", USER_AGENT, "-o", str(dest), url]
+    # One retry on a transient error; a failed download stops until the user starts it again. A
+    # stalled connection fails like in the daemon (src/models.h), and -q must come first.
+    return ["curl", "-q", "-fsSL", "--retry", "1", "--connect-timeout", "30", "--speed-limit", "1024",
+            "--speed-time", "60", "-A", USER_AGENT, "-o", str(dest), url]
 
 
 def _sha256(path: Path) -> str:
@@ -279,14 +283,22 @@ def _user_env() -> dict:
     }
 
 
-async def _run_split(cmd: list[str]) -> tuple[int, str, str]:
+async def _run_split(cmd: list[str], timeout: float | None = None) -> tuple[int, str, str]:
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         env=_user_env(),
+        start_new_session=True,
     )
-    stdout, stderr = await proc.communicate()
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout)
+    except asyncio.TimeoutError:
+        # The whole group, so curl and the AppImage's FUSE helper don't outlive the updater
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        await proc.wait()
+        return -1, "", f"timed out after {timeout:g} seconds"
     return proc.returncode, stdout.decode(errors="replace").strip(), stderr.decode(errors="replace").strip()
 
 
@@ -297,6 +309,10 @@ async def _run(cmd: list[str]) -> tuple[int, str]:
 
 APPIMAGE_NAME = "Whisker-x86_64.AppImage"
 STATUS_TIMEOUT_S = 3
+VERSION_TIMEOUT_S = 30
+# Longer than the updater's own curl limits, and than TimeoutStartSec of whisker-update.service
+CHECK_UPDATE_TIMEOUT_S = 10 * 60
+UPDATE_TIMEOUT_S = 85 * 60
 
 
 def exec_start_path(show_output: str) -> Path | None:
@@ -390,8 +406,8 @@ class Plugin:
         appimage = await _find_appimage()
         if not appimage:
             return {"current": "", "available": False, "latest": "", "updating": False, "error": NO_APPIMAGE}
-        _, version, _ = await _run_split([str(appimage), "--version"])
-        result = parse_check_update(*await _run_split([str(appimage), "--check-update"]))
+        _, version, _ = await _run_split([str(appimage), "--version"], VERSION_TIMEOUT_S)
+        result = parse_check_update(*await _run_split([str(appimage), "--check-update"], CHECK_UPDATE_TIMEOUT_S))
         return {"current": parse_version_output(version), "updating": self._updating, **result}
 
     async def run_update(self) -> dict:
@@ -404,7 +420,7 @@ class Plugin:
             return {"ok": False, "message": "Whisker is recording. Update when it's done."}
         self._updating = True
         try:
-            result = parse_update_result(*await _run_split([str(appimage), "--update"]))
+            result = parse_update_result(*await _run_split([str(appimage), "--update"], UPDATE_TIMEOUT_S))
         finally:
             self._updating = False
         log = decky.logger.info if result["ok"] else decky.logger.error
