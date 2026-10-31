@@ -5,6 +5,7 @@
 
 #include <arpa/inet.h>
 #include <atomic>
+#include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -129,6 +130,51 @@ static void testFailedDownloadIsRetriedAtMostOnce(const fs::path& dir) {
     CHECK(server.requests <= 2);
 }
 
+static void testCurlCommandLimits() {
+    std::vector<std::string> cmd = curlCommand({"https://example.org/x"});
+    CHECK_EQ(cmd.at(0), std::string("curl"));
+    CHECK_EQ(cmd.at(1), std::string("-q"));
+    auto value = [&](const std::string& flag) {
+        for (size_t i = 0; i + 1 < cmd.size(); ++i)
+            if (cmd[i] == flag) return cmd[i + 1];
+        return std::string();
+    };
+    CHECK_EQ(value("--connect-timeout"), std::to_string(kCurlConnectSeconds));
+    CHECK_EQ(value("--speed-limit"), std::to_string(kCurlMinBytesPerSecond));
+    CHECK_EQ(value("--speed-time"), std::to_string(kCurlStallSeconds));
+    CHECK_EQ(cmd.back(), std::string("https://example.org/x"));
+}
+
+// Accepts connections into the backlog and never answers, like a stalled server.
+struct SilentServer {
+    int fd = -1;
+    int port = 0;
+
+    SilentServer() {
+        fd = socket(AF_INET, SOCK_STREAM, 0);
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        CHECK(bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
+        listen(fd, 8);
+        socklen_t len = sizeof(addr);
+        getsockname(fd, reinterpret_cast<sockaddr*>(&addr), &len);
+        port = ntohs(addr.sin_port);
+    }
+    ~SilentServer() { close(fd); }
+};
+
+static void testStalledDownloadTimesOut(const fs::path& dir) {
+    SilentServer server;
+    std::string base = "http://127.0.0.1:" + std::to_string(server.port) + "/";
+    auto start = std::chrono::steady_clock::now();
+    std::string error = downloadFile(base + "update.zip", (dir / ".stall.part").string(), 0, 1);
+    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start).count();
+    std::printf("stalled download: %lld s, error: %s\n", static_cast<long long>(seconds), error.c_str());
+    CHECK(!error.empty());
+    CHECK(seconds < 15);
+}
+
 int main() {
     fs::path dir = fs::temp_directory_path() / ("whisker-test-models-" + std::to_string(getpid()));
     fs::create_directories(dir);
@@ -136,6 +182,8 @@ int main() {
     testSha256();
     testInstallVerified(dir);
     testFailedDownloadIsRetriedAtMostOnce(dir);
+    testCurlCommandLimits();
+    testStalledDownloadTimesOut(dir);
     fs::remove_all(dir);
     return checkReport();
 }

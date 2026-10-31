@@ -32,7 +32,7 @@ add_test(NAME service_kill_mode
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 add_test(NAME update_timer_units
-    COMMAND sh -c "grep -q -- '--auto-update' appimage/install-service.sh && grep -qx 'RandomizedDelaySec=4h' appimage/install-service.sh && grep -q 'disable --now whisker-update.timer' scripts/install.sh uninstall.sh"
+    COMMAND sh -c "grep -q -- '--auto-update' appimage/install-service.sh && grep -qx 'RandomizedDelaySec=4h' appimage/install-service.sh && grep -qx 'TimeoutStartSec=80min' appimage/install-service.sh && grep -q 'disable --now whisker-update.timer' scripts/install.sh uninstall.sh"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 add_test(NAME cli_version COMMAND whisker --version)

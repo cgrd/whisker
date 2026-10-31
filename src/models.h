@@ -30,12 +30,26 @@ std::string modelOriginalUrl();
 // "Whisker/<version> (+https://github.com/cgrd/whisker)", sent with every model download.
 std::string modelUserAgent();
 
+// Time limits for curl. A connection that stalls (under kCurlMinBytesPerSecond for
+// kCurlStallSeconds) always fails; max_seconds additionally caps a whole transfer.
+constexpr int kCurlConnectSeconds = 30;
+constexpr int kCurlMinBytesPerSecond = 1024;
+constexpr int kCurlStallSeconds = 60;
+constexpr int kCurlSmallMaxSeconds = 60;
+constexpr int kCurlUpdateMaxSeconds = 30 * 60;
+
+// The full curl command line for args: ~/.curlrc ignored, HTTPS-only redirects, one retry, the
+// stall and connect limits above and the Whisker User-Agent.
+std::vector<std::string> curlCommand(const std::vector<std::string>& args);
+
 // Fetches url to path with curl. curl retries a transient failure once and nothing loops
 // around it, so a failed download stops until the user starts it again. Redirects must stay on
-// HTTPS, and max_bytes (0 for no limit) caps the download. Returns "" or an error.
-std::string downloadFile(const std::string& url, const std::string& path, uint64_t max_bytes = 0);
+// HTTPS, max_bytes caps the download and max_seconds its duration (0 for no limit). Returns "" or an error.
+std::string downloadFile(const std::string& url, const std::string& path, uint64_t max_bytes = 0,
+                         int max_seconds = 0);
 
-// Requests url without following redirects and stores where it redirects to. Returns "" or an error.
+// Requests url without following redirects and stores where it redirects to, within
+// kCurlSmallMaxSeconds. Returns "" or an error.
 std::string fetchRedirect(const std::string& url, std::string& location);
 
 // Moves a finished download into place only if its size and SHA-256 match; otherwise deletes

@@ -51,7 +51,7 @@ struct TempDir {
 };
 
 std::string fetchSmall(const std::string& url, const std::string& path, uint64_t max_bytes, std::string& out) {
-    std::string error = downloadFile(url, path, max_bytes);
+    std::string error = downloadFile(url, path, max_bytes, kCurlSmallMaxSeconds);
     if (!error.empty()) return error;
     std::ifstream f(path, std::ios::binary);
     out.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
@@ -112,7 +112,7 @@ std::string installAppImage(const std::string& base_url, const Manifest& manifes
     const FileDigest& zip = manifest.assets.at(kUpdateZipAsset);
     std::string zip_part = tmp + "/update.zip.part";
     std::string zip_path = tmp + "/update.zip";
-    std::string error = downloadFile(base_url + kUpdateZipAsset, zip_part, zip.size);
+    std::string error = downloadFile(base_url + kUpdateZipAsset, zip_part, zip.size, kCurlUpdateMaxSeconds);
     if (!error.empty()) {
         unlink(zip_part.c_str());
         return "download failed: " + error;

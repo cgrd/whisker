@@ -36,6 +36,8 @@ After=network-online.target
 [Service]
 Type=oneshot
 ExecStart=${APPIMAGE_PATH} --auto-update
+# A stalled download must not hold the update lock forever; covers curl's own limits (src/models.h)
+TimeoutStartSec=80min
 Environment=WHISKER_SERVICE=1
 EOF
 cat > "$HOME/.config/systemd/user/whisker-update.timer" <<EOF

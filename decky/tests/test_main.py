@@ -3,6 +3,7 @@ import asyncio
 import http.server
 import logging
 import os
+import subprocess
 import threading
 from pathlib import Path
 
@@ -324,6 +325,9 @@ def test_downloads_identify_whisker():
     agent = args[args.index("-A") + 1]
     assert agent.startswith("Whisker/") and agent.endswith("(+https://github.com/cgrd/whisker)")
     assert args[args.index("--retry") + 1] == "1"
+    assert args[1] == "-q"
+    assert args[args.index("--speed-time") + 1] == "60"
+    assert "--connect-timeout" in args and "--speed-limit" in args
 
 
 ABC_SHA256 = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
@@ -464,8 +468,8 @@ def updater(tmp_path, monkeypatch):
     monkeypatch.setattr(main.decky, "logger", logging.getLogger("test"), raising=False)
     real_run_split = main._run_split
 
-    async def run_split(cmd):
-        return (1, "", "") if cmd[0] == "systemctl" else await real_run_split(cmd)
+    async def run_split(cmd, timeout=None):
+        return (1, "", "") if cmd[0] == "systemctl" else await real_run_split(cmd, timeout)
 
     monkeypatch.setattr(main, "_run_split", run_split)
     appimage = tmp_path / "Applications" / main.APPIMAGE_NAME
@@ -477,6 +481,7 @@ def updater(tmp_path, monkeypatch):
         '  --version) echo "whisker 1.3.1" ;;\n'
         '  --check-update) echo "Whisker v1.4.0 is available (this is 1.3.1). Install it with: whisker --update" ;;\n'
         '  --update) echo "Downloading Whisker v1.4.0"; echo "Updated Whisker to v1.4.0" ;;\n'
+        f'  --stall) sh -c "sleep 30; touch {tmp_path / "survived"}" & sleep 30 ;;\n'
         "esac\n"
     )
     appimage.chmod(0o755)
@@ -497,6 +502,19 @@ def test_check_update_runs_the_installed_appimage(updater):
 def test_run_update_runs_the_installed_appimage(updater):
     assert asyncio.run(main.Plugin().run_update()) == {"ok": True, "message": "Updated Whisker to v1.4.0"}
     assert calls(updater) == ["--update"]
+
+
+def test_stalled_update_is_killed(updater, monkeypatch):
+    monkeypatch.setattr(main, "UPDATE_TIMEOUT_S", 0.5)
+    monkeypatch.setattr(main, "_find_appimage", lambda: asyncio.sleep(0, updater / "Applications" / main.APPIMAGE_NAME))
+    real_run_split = main._run_split
+    monkeypatch.setattr(main, "_run_split", lambda cmd, timeout=None: real_run_split([cmd[0], "--stall"], timeout))
+    plugin = main.Plugin()
+    assert asyncio.run(plugin.run_update()) == {"ok": False, "message": "timed out after 0.5 seconds"}
+    assert not plugin._updating
+    # The killed process group took its children with it
+    result = subprocess.run(["pgrep", "-f", str(updater / "survived")], capture_output=True)
+    assert result.returncode == 1
 
 
 def test_no_appimage_runs_nothing(updater):
