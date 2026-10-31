@@ -1,6 +1,6 @@
 {
   "name": "whisker-decky",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Decky Loader plugin for Whisker speech-to-text",
   "type": "module",
   "scripts": {
