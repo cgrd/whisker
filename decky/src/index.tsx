@@ -64,7 +64,7 @@ const getChatProfiles = callable<[], string[]>("get_chat_profiles");
 
 const DEFAULTS: Record<string, Value> = {
     model: "",
-    backend: "vulkan",
+    backend: "cpu",
     audio_device: "",
     trigger_key: "",
     trigger_button: "",

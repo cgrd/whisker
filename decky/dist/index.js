@@ -100,7 +100,7 @@ const captureButton = callable("capture_button");
 const getChatProfiles = callable("get_chat_profiles");
 const DEFAULTS = {
     model: "",
-    backend: "vulkan",
+    backend: "cpu",
     audio_device: "",
     trigger_key: "",
     trigger_button: "",

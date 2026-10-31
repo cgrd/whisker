@@ -2,7 +2,7 @@
 
 Speech-to-text for Linux and the Steam Deck. Hold a button or foot pedal, speak, release, and your words are typed into whatever window has focus.
 
-Transcription runs locally with an NVIDIA Parakeet model (Vulkan on desktop GPUs, CPU on the Deck). Nothing is sent to the cloud.
+Transcription runs locally with an NVIDIA Parakeet model (Vulkan on desktop GPUs; the Decky plugin picks CPU so transcription doesn't take GPU time from the game). Nothing is sent to the cloud.
 
 Needs a 64-bit x86 CPU with AVX2 (x86-64-v3): Intel Haswell (2013), AMD Zen 1 or newer, which includes the Steam Deck.
 
