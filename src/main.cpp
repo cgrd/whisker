@@ -314,7 +314,7 @@ static int checkConfig(const std::string& path) {
 }
 
 static void printUsage() {
-    printf("usage: whisker [-c CONFIG] [--settings] [--check-config] [--check-update] [--update] [--version]\n");
+    printf("usage: whisker [-c CONFIG] [--settings] [--check-config] [--check-update] [--update] [--verify-release DIR] [--version]\n");
 }
 
 int main(int argc, char* argv[]) {
@@ -340,6 +340,12 @@ int main(int argc, char* argv[]) {
         } else if (strcmp(argv[i], "--auto-update") == 0) {
             update_requested = true;
             update_mode = UpdateMode::Scheduled;
+        } else if (strcmp(argv[i], "--verify-release") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "whisker: --verify-release needs a directory\n");
+                return 2;
+            }
+            return runVerifyRelease(argv[i + 1]);
         } else if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-V") == 0) {
             printf("whisker %s\n", WHISKER_VERSION);
             return 0;

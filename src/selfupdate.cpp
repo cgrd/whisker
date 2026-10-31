@@ -250,3 +250,16 @@ int runUpdate(UpdateMode mode, const std::string& config_path) {
     if (cfg.tray) notifyDesktop("Whisker updated", "Updated to " + tag + ". What's new: " + kReleases + "/tag/" + tag);
     return 0;
 }
+
+int runVerifyRelease(const std::string& dir) {
+    auto failed = [](const std::string& message) {
+        fprintf(stderr, "whisker: release verification failed: %s\n", message.c_str());
+        return 1;
+    };
+    if (!hasReleaseSigningKey()) return failed("this build has no release signing key");
+    std::string version;
+    std::string error = verifyReleaseDir(dir, releaseSigningKeys(), WHISKER_VERSION, version);
+    if (!error.empty()) return failed(error);
+    printf("Verified Whisker v%s against its signed manifest\n", version.c_str());
+    return 0;
+}

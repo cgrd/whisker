@@ -53,7 +53,7 @@ target_include_directories(test_models PRIVATE ${CMAKE_BINARY_DIR})
 whisker_test(test_spawn ${CMAKE_SOURCE_DIR}/src/spawn.cpp)
 whisker_test(test_command ${CMAKE_SOURCE_DIR}/src/command.cpp)
 
-whisker_test(test_update ${CMAKE_SOURCE_DIR}/src/update.cpp)
+whisker_test(test_update ${CMAKE_SOURCE_DIR}/src/update.cpp ${CMAKE_SOURCE_DIR}/src/sha256.cpp)
 target_link_libraries(test_update PRIVATE monocypher)
 if(WHISKER_REQUIRE_SIGNING_KEY)
     add_test(NAME release_signing_key COMMAND test_update --require-release-key)
@@ -61,6 +61,11 @@ endif()
 add_test(NAME cli_update_needs_appimage
     COMMAND sh -c "env -u APPIMAGE $<TARGET_FILE:whisker> --update -c /dev/null 2>&1; test $? -eq 1")
 set_tests_properties(cli_update_needs_appimage PROPERTIES PASS_REGULAR_EXPRESSION "not running from an AppImage")
+
+add_test(NAME cli_verify_release_without_manifest
+    COMMAND sh -c "$<TARGET_FILE:whisker> --verify-release ${CMAKE_CURRENT_SOURCE_DIR}/data 2>&1; test $? -eq 1")
+set_tests_properties(cli_verify_release_without_manifest PROPERTIES PASS_REGULAR_EXPRESSION "release verification failed")
+add_test(NAME cli_verify_release_needs_dir COMMAND sh -c "$<TARGET_FILE:whisker> --verify-release; test $? -eq 2")
 
 add_test(NAME cli_unknown_flag
     COMMAND sh -c "$<TARGET_FILE:whisker> --settings-only; test $? -eq 2")

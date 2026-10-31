@@ -24,6 +24,11 @@ MODELS_DIR="$DATA_DIR/models"
 MENU_ENTRY="$HOME/.local/share/applications/whisker.desktop"
 DECKY_PLUGINS="$HOME/homebrew/plugins"
 UDEV_RULES=(/etc/udev/rules.d/70-whisker.rules /etc/udev/rules.d/70-pedal-stt.rules)
+MANIFEST=whisker-manifest.json
+# The release signing keys from src/signing_keys.h (scripts/tests/test_install_script.py keeps them in sync)
+SIGNING_KEYS=(
+    RWQ/sZmHKddY47iThBcwcn10e6QWu5WIpnAqDMDe3k/C4NBhud42ple8
+)
 
 say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; }
@@ -113,17 +118,105 @@ do_uninstall() {
 
 download() {
     local name="$1" dest="$2"
-    curl -fL --progress-bar -o "$dest/$name" "$RELEASE_URL/$name" \
+    curl -q -fL --progress-bar --connect-timeout 30 --speed-limit 1024 --speed-time 60 \
+        -o "$dest/$name" "$RELEASE_URL/$name" \
         || die "could not download $name from $RELEASE_URL"
 }
 
-verify() {
-    local dir="$1"
-    shift
+download_manifest() {
+    local dest="$1"
+    curl -q -fsSL --connect-timeout 30 --max-time 120 -o "$dest/$MANIFEST" "$RELEASE_URL/$MANIFEST" 2>/dev/null \
+        && curl -q -fsSL --connect-timeout 30 --max-time 120 -o "$dest/$MANIFEST.minisig" \
+            "$RELEASE_URL/$MANIFEST.minisig" 2>/dev/null \
+        && return 0
+    rm -f "$dest/$MANIFEST" "$dest/$MANIFEST.minisig"
+    return 1
+}
+
+verify_sums() {
+    local sums="$1" dir="$2"
+    shift 2
     (cd "$dir" && for name in "$@"; do
-        grep -E "  \*?$name\$" SHA256SUMS | sha256sum -c --quiet - \
+        grep -E "  \*?$name\$" "$sums" | sha256sum -c --quiet - \
             || die "checksum mismatch for $name, refusing to install"
     done)
+}
+
+# Checks the release directory against the manifest whose signature minisign verified.
+check_manifest_assets() {
+    python3 -I - "$@" <<'PY'
+import hashlib, json, os, sys
+release, comment = sys.argv[1], sys.argv[2]
+signed = {"whisker-manifest.json", "whisker-manifest.json.minisig"}
+with open(os.path.join(release, "whisker-manifest.json"), "rb") as f:
+    manifest = json.load(f)
+if manifest.get("name") != "whisker" or comment != f"whisker v{manifest.get('version')}":
+    sys.exit(f"the signed comment '{comment}' does not match the manifest")
+files = sorted(set(os.listdir(release)) - signed)
+if not files:
+    sys.exit("there are no release files to verify")
+for name in files:
+    path = os.path.join(release, name)
+    entry = manifest["assets"].get(name)
+    if not entry or os.path.islink(path) or not os.path.isfile(path):
+        sys.exit(f"{name} is not in the signed manifest")
+    sha, size = hashlib.sha256(), 0
+    with open(path, "rb") as f:
+        while chunk := f.read(1 << 20):
+            sha.update(chunk)
+            size += len(chunk)
+    if size != entry["size"] or sha.hexdigest() != entry["sha256"]:
+        sys.exit(f"{name} does not match the signed manifest")
+PY
+}
+
+verify_with_minisign() {
+    local release="$1" key comment
+    for key in "${SIGNING_KEYS[@]}"; do
+        comment=$(minisign -V -Q -P "$key" -m "$release/$MANIFEST" -x "$release/$MANIFEST.minisig" 2>/dev/null) \
+            || continue
+        check_manifest_assets "$release" "$comment" || die "refusing to install a download that doesn't match its signed manifest"
+        say "Checked the download against the signed release manifest with minisign"
+        return 0
+    done
+    die "the release manifest is not signed by a Whisker release key, refusing to install"
+}
+
+# An installed Whisker checks the download with the keys built into it, so updating through the
+# installer is as safe as whisker --update. Only an install with nothing to check against trusts
+# the download (and SHA256SUMS, which comes from the same place).
+verify_release() {
+    local tmp="$1" signed="$2"
+    shift 2
+    local release="$tmp/release" out rc=0
+    if [ -x "$APPIMAGE" ]; then
+        if [ "$signed" = 1 ]; then
+            # WHISKER_SERVICE keeps an old AppImage that doesn't know the flag from opening its first-run setup
+            out=$(WHISKER_SERVICE=1 "$APPIMAGE" --verify-release "$release" 2>&1) || rc=$?
+            if [ "$rc" -eq 0 ]; then
+                say "$out (checked by your installed Whisker)"
+                return 0
+            fi
+            if [ "$rc" -ne 2 ] || ! grep -q "unknown argument" <<<"$out"; then
+                warn "$out"
+                die "your installed Whisker could not verify this download, so nothing was changed. If it's broken, run install.sh --uninstall first."
+            fi
+            say "Your installed Whisker is too old to check the download"
+        elif [[ "$RELEASE_URL" == file://* ]]; then
+            say "warning: $RELEASE_URL has no signed manifest; trusting these local files"
+            verify_sums "$tmp/SHA256SUMS" "$release" "$@"
+            return 0
+        else
+            die "the release has no signed manifest ($MANIFEST), so your install was left as it is"
+        fi
+    fi
+    if [ "$signed" = 1 ] && command -v minisign >/dev/null; then
+        verify_with_minisign "$release"
+        return 0
+    fi
+    verify_sums "$tmp/SHA256SUMS" "$release" "$@"
+    say "warning: nothing on this system can check the release signature, so this install trusts the download"
+    say "from $RELEASE_URL, like any curl | bash. Install minisign to have it checked; updates are always checked."
 }
 
 install_menu_entry() {
@@ -199,17 +292,20 @@ do_install() {
     has_decky && assets+=(Whisker-decky.zip)
 
     say "Downloading Whisker"
+    local release="$tmp/release" signed=1
+    mkdir "$release"
     download SHA256SUMS "$tmp"
     for name in "${assets[@]}"; do
-        download "$name" "$tmp"
+        download "$name" "$release"
     done
-    verify "$tmp" "${assets[@]}"
+    download_manifest "$release" || signed=0
+    verify_release "$tmp" "$signed" "${assets[@]}"
 
     say "Removing any previous install (your config is kept)"
     stop_old_install
 
     mkdir -p "$APP_DIR"
-    python3 -I -m zipfile -e "$tmp/Whisker-x86_64.AppImage.zip" "$tmp/app"
+    python3 -I -m zipfile -e "$release/Whisker-x86_64.AppImage.zip" "$tmp/app"
     install -m755 "$tmp/app/Whisker-x86_64.AppImage" "$APPIMAGE"
     "$APPIMAGE" --version >/dev/null || die "the AppImage does not run on this system"
     install_menu_entry
@@ -224,7 +320,7 @@ do_install() {
 
     local decky_failed=0
     if has_decky; then
-        install_decky_plugin "$tmp/Whisker-decky.zip" || decky_failed=1
+        install_decky_plugin "$release/Whisker-decky.zip" || decky_failed=1
     fi
 
     local chooser_opened=0
