@@ -120,3 +120,8 @@ def test_release_please_pr_skips_the_template():
     assert pr_problems("chore(main): release 1.2.0", body, "github-actions[bot]") == []
     assert rules(pr_problems("chore(main): release 1.2.0", body, "someone")) == ["pr-template"] * 3
     assert rules(pr_problems("chore: something else", body, "github-actions[bot]")) == ["pr-template"] * 3
+
+
+def test_fixes_accepts_several_issues():
+    body = GOOD_BODY.replace("Fixes: none", "Fixes: #35, fixes #36")
+    assert pr_problems("fix: something", body) == []

@@ -17,7 +17,7 @@ Thanks for helping. This covers how to get a change merged.
 4. Run `make tools hooks` once. It installs the pinned linters into `.venv` and the git hooks (conventions and secret scan on commit, DCO sign-off check).
 5. Make your change, with tests where it makes sense. Run `make check`, which runs everything CI runs on a PR except the container build.
 6. Commit with a sign-off (see below): `git commit -s`.
-7. Push to your fork and open a pull request against `main`. Copy the template, keep every line, tick every box and fill in `What`, `Tested`, `Tested on`, `Fixes` (#N or none) and `AI-assisted` (yes or no). The Conventions check fails until it's complete.
+7. Push to your fork and open a pull request against `main`. Copy the template, keep every line, tick every box and fill in `What`, `Tested`, `Tested on`, `Fixes` (#N or none; for several issues write `#1, fixes #2`, since GitHub only closes an issue that has its own keyword) and `AI-assisted` (yes or no). The Conventions check fails until it's complete.
 8. CI runs. A maintainer has to approve CI runs for outside contributors, so the first run may wait a bit.
 9. Address review comments by pushing more commits to the same branch. The PR is squash-merged, so don't worry about a tidy history.
 
