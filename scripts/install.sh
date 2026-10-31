@@ -77,7 +77,9 @@ stop_old_install() {
 remove_decky_plugin() {
     [ -d "$DECKY_PLUGINS/Whisker" ] || return 0
     say "Removing the Decky plugin. The plugin folder belongs to root, so sudo will ask for your password."
-    as_root sh -c "rm -rf '$DECKY_PLUGINS/Whisker' && (systemctl restart plugin_loader 2>/dev/null || true)" \
+    # shellcheck disable=SC2016
+    as_root sh -c 'cd / && rm -rf -- "$1" && (systemctl restart plugin_loader 2>/dev/null || true)' sh \
+        "$DECKY_PLUGINS/Whisker" \
         || { warn "could not remove the Decky plugin ($DECKY_PLUGINS/Whisker)"; retry_hint; exit 1; }
 }
 
@@ -166,10 +168,12 @@ install_decky_plugin() {
     local zip="$1"
     say "Installing the Decky plugin. Decky's plugin folder belongs to root, so sudo will ask for your password."
     say "(On a Steam Deck, set one first with 'passwd' if you never have.)"
-    as_root sh -c "rm -rf '$DECKY_PLUGINS/Whisker' \
-        && python3 -m zipfile -e '$zip' '$DECKY_PLUGINS' \
-        && chmod -R u=rwX,go=rX '$DECKY_PLUGINS/Whisker' \
-        && (systemctl restart plugin_loader 2>/dev/null || true)" && return 0
+    # Run from / with python3 -I so nothing in the caller's directory is imported as root
+    # shellcheck disable=SC2016
+    as_root sh -c 'cd / && rm -rf -- "$2/Whisker" \
+        && python3 -I -m zipfile -e "$1" "$2" \
+        && chmod -R u=rwX,go=rX "$2/Whisker" \
+        && (systemctl restart plugin_loader 2>/dev/null || true)' sh "$zip" "$DECKY_PLUGINS" && return 0
     warn "the Decky plugin was NOT installed or updated, the old version may still be in place"
     retry_hint
     return 1
@@ -205,7 +209,7 @@ do_install() {
     stop_old_install
 
     mkdir -p "$APP_DIR"
-    python3 -m zipfile -e "$tmp/Whisker-x86_64.AppImage.zip" "$tmp/app"
+    python3 -I -m zipfile -e "$tmp/Whisker-x86_64.AppImage.zip" "$tmp/app"
     install -m755 "$tmp/app/Whisker-x86_64.AppImage" "$APPIMAGE"
     "$APPIMAGE" --version >/dev/null || die "the AppImage does not run on this system"
     install_menu_entry
