@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/cgrd/whisker/compare/v1.3.1...v1.4.0) (2026-10-31)
+
+
+### Features
+
+* **decky:** check for and install Whisker updates from the panel ([#46](https://github.com/cgrd/whisker/issues/46)) ([0fb2502](https://github.com/cgrd/whisker/commit/0fb250259b54056b1fac9e7d6b5897f6a5cf7145))
+
 ## [1.3.1](https://github.com/cgrd/whisker/compare/v1.3.0...v1.3.1) (2026-10-31)
 
 
