@@ -14,5 +14,5 @@
 * [ ] No notes, logs or screenshots added to the repo (attach them here)
 * [ ] New third-party code is listed in `THIRD_PARTY_NOTICES.md`
 * [ ] Tested on: <!-- desktop distro + session, Steam Deck Game Mode / Desktop Mode, or "CI only" -->
-* [ ] Fixes: <!-- #N, or none -->
+* [ ] Fixes: <!-- #N, or none. For several issues repeat the keyword ("#1, fixes #2") or GitHub only closes the first -->
 * [ ] AI-assisted: <!-- yes / no -->
