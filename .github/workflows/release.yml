@@ -70,10 +70,55 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       cmake_args: -DWHISKER_REQUIRE_SIGNING_KEY=ON
+      tag: ${{ needs.target.outputs.tag }}
 
-  publish:
+  # Outside the release environment, so the job holding the signing key never unpacks or
+  # parses the AppImage or touches the downloaded LGPL tarballs
+  lgpl-sources:
     needs: [target, build]
     if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      artifact: ${{ steps.collect.outputs.artifact }}
+      sha256: ${{ steps.collect.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.target.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+          path: dist
+      - id: collect
+        env:
+          COMMIT: ${{ needs.build.outputs.commit }}
+          EXPECTED: ${{ needs.build.outputs.sha256 }}
+        run: |
+          [ "$(git rev-parse HEAD)" = "$COMMIT" ] || { echo "::error::checkout is not the built commit $COMMIT"; exit 1; }
+          (cd dist && sha256sum -c --strict --quiet <<<"$EXPECTED")
+          mkdir lgpl
+          python3 -I -m zipfile -e dist/Whisker-x86_64.AppImage.zip lgpl
+          scripts/fetch-lgpl-sources.sh lgpl
+          rm lgpl/Whisker-x86_64.AppImage
+          {
+            echo "artifact=whisker-lgpl-${COMMIT::12}"
+            echo "sha256=$(cd lgpl && sha256sum Whisker-lgpl-sources.tar)"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.collect.outputs.artifact }}
+          path: lgpl/Whisker-lgpl-sources.tar
+          if-no-files-found: error
+          retention-days: 14
+
+  # Holds the signing key, so it runs no build output and no third-party code beyond pinned
+  # Actions and minisign (checksummed): verify, attest, sign, upload
+  publish:
+    needs: [target, build, lgpl-sources]
+    if: always() && needs.lgpl-sources.result == 'success'
     runs-on: ubuntu-24.04
     # Configure this environment to require maintainer approval (see docs/MAINTAINING.md)
     environment: release
@@ -84,11 +129,33 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: refs/tags/${{ needs.target.outputs.tag }}
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ needs.build.outputs.artifact }}
           path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.lgpl-sources.outputs.artifact }}
+          path: dist
+      - name: Check the commit, the release and the assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.target.outputs.tag }}
+          COMMIT: ${{ needs.build.outputs.commit }}
+          EXPECTED: |
+            ${{ needs.build.outputs.sha256 }}
+            ${{ needs.lgpl-sources.outputs.sha256 }}
+        run: |
+          [ "$(git rev-parse HEAD)" = "$COMMIT" ] || { echo "::error::$TAG no longer points to the built commit $COMMIT"; exit 1; }
+          if target=$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish 2>/dev/null); then
+            [ "$target" = "$COMMIT" ] || { echo "::error::release $TAG targets '$target', not the built commit $COMMIT; refusing to replace its assets"; exit 1; }
+          fi
+          sed 's/^ *//; /^$/d' <<<"$EXPECTED" > "$RUNNER_TEMP/expected.sha256"
+          (cd dist && sha256sum -c --strict --quiet "$RUNNER_TEMP/expected.sha256")
+          diff <(LC_ALL=C ls -A dist) <(awk '{print $2}' "$RUNNER_TEMP/expected.sha256" | LC_ALL=C sort) \
+            || { echo "::error::dist/ holds files the build did not produce"; exit 1; }
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
@@ -97,12 +164,6 @@ jobs:
             dist/install.sh
             dist/Install-Whisker.desktop
             dist/Uninstall-Whisker.desktop
-      - name: Collect LGPL sources
-        run: |
-          python3 -m zipfile -e dist/Whisker-x86_64.AppImage.zip work
-          chmod +x work/Whisker-x86_64.AppImage
-          scripts/fetch-lgpl-sources.sh work
-          mv work/Whisker-lgpl-sources.tar dist/
       # Fails without the secret, so a release is never published unsigned
       - name: Sign the update manifest
         env:
@@ -114,8 +175,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.target.outputs.tag }}
+          COMMIT: ${{ needs.build.outputs.commit }}
         run: |
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag --generate-notes
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag --target "$COMMIT" --generate-notes
           gh release upload "$TAG" dist/* --clobber
           gh release view "$TAG" --json body --jq .body > changes.md
           if ! grep -q 'releases/latest/download/install.sh' changes.md; then

@@ -40,30 +40,36 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          # CMakeLists.txt pins commits; a release tag, if any, stays in a comment on the same line
           bump() {
-            local var="$1" name="$2" new="$3"
+            local var="$1" name="$2" new="$3" tag="${4:-}"
+            [[ "$new" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::$name: '$new' is not a commit SHA"; return 1; }
+            [[ -z "$tag" || "$tag" =~ ^v?[0-9][0-9A-Za-z.-]*$ ]] || { echo "::error::$name: bad tag '$tag'"; return 1; }
             local old
             old=$(sed -n "s/^set($var \([^ ]*\) .*/\1/p" CMakeLists.txt)
-            [ -n "$new" ] && [ "$old" != "$new" ] || { echo "$name is current ($old)"; return 0; }
-            local branch="deps/$name-${new:0:12}"
+            [ "$old" != "$new" ] || { echo "$name is current ($old)"; return 0; }
+            local version="${tag:-${new:0:12}}"
+            local branch="deps/$name-$version"
             if git ls-remote --exit-code origin "refs/heads/$branch" >/dev/null; then
               echo "$branch already open"
               return 0
             fi
             git switch -c "$branch" origin/main
-            sed -i "s/^set($var $old /set($var $new /" CMakeLists.txt
-            git commit -s -am "build(deps): bump $name to ${new:0:12}"
+            sed -i -E "s/^set\($var $old (CACHE STRING \"[^\"]*\"\))( # .*)?$/set($var $new \1${tag:+ # $tag}/" CMakeLists.txt
+            ! git diff --quiet CMakeLists.txt || { echo "::error::could not rewrite $var in CMakeLists.txt"; return 1; }
+            git commit -s -am "build(deps): bump $name to $version"
             git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$branch"
             gh pr create --base main --head "$branch" --label dependencies \
-              --title "build(deps): bump $name to ${new:0:12}" \
-              --body "Automated bump of \`$var\` from \`$old\` to \`$new\`. CI builds and tests it; check the upstream changelog before merging."
+              --title "build(deps): bump $name to $version" \
+              --body "Automated bump of \`$var\` from \`$old\` to \`$new\`${tag:+ ($tag)}. CI builds and tests it; check the upstream changelog before merging."
             git switch -
           }
 
           gh label create dependencies --color 0366D6 2>/dev/null || true
           bump TRANSCRIBE_CPP_TAG transcribe.cpp \
             "$(git ls-remote https://github.com/handy-computer/transcribe.cpp refs/heads/main | cut -f1)"
-          bump IMGUI_TAG imgui "$(gh api repos/ocornut/imgui/releases/latest --jq .tag_name)"
+          imgui_tag=$(gh api repos/ocornut/imgui/releases/latest --jq .tag_name)
+          bump IMGUI_TAG imgui "$(gh api "repos/ocornut/imgui/commits/$imgui_tag" --jq .sha)" "$imgui_tag"
 
           # Speech models: pin models.json to the HF repo's latest commit with fresh sizes and hashes
           python3 scripts/update-models.py

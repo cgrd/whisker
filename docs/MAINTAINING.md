@@ -8,7 +8,7 @@ The playbook for @cgrd. Most of the lifecycle is automated; this lists what runs
 * **Every PR**: the Conventions check (`conventions.yml`: rules, PR title and template, run from the base branch against the PR's objects, plus the risky-change summary), dependency review, CodeQL.
 * **Hourly** (`pr-housekeeping.yml`): closes PRs over the open PR limit (1 until an author has a merged PR, 5 after), labels PRs that conflict with main `needs rebase`, applies path labels.
 * **Merge to main** (`release.yml`): release-please updates an open "chore(main): release x.y.z" PR with the next version and `CHANGELOG.md`, based on the Conventional Commit titles merged since the last release.
-* **Merging the release PR**: release-please tags `vX.Y.Z` and creates the GitHub release. The same workflow builds the assets, waits for approval on the `release` environment, generates build provenance, signs `whisker-manifest.json` for the updater ([updates.md](updates.md)), attaches the zips, `install.sh`, the desktop launchers, `SHA256SUMS`, `Whisker-lgpl-sources.tar` and the signed manifest, and puts the install one-liner at the top of the notes.
+* **Merging the release PR**: release-please tags `vX.Y.Z` and creates the GitHub release. The same workflow builds the tag, collects the LGPL sources, waits for approval on the `release` environment, generates build provenance, signs `whisker-manifest.json` for the updater ([updates.md](updates.md)), attaches the zips, `install.sh`, the desktop launchers, `SHA256SUMS`, `Whisker-lgpl-sources.tar` and the signed manifest, and puts the install one-liner at the top of the notes. See Release pipeline for how the jobs are split.
 * **Weekly**: a build against live Arch packages and transcribe.cpp main opens or updates an issue labeled `scheduled-build` if it fails (`scheduled.yml`). `deps-bump.yml` opens PRs for new transcribe.cpp commits and Dear ImGui releases. Dependabot bumps pinned GitHub Actions. Scorecard and CodeQL run on a schedule.
 * **Daily** (`stale.yml`): issues and PRs labeled `needs-info` get `no-response` after 30 quiet days and close 14 days later; PRs with `needs rebase` get `stale` after 7 quiet days but stay open. Anything labeled `security` or `pinned` is never touched.
 
@@ -83,7 +83,19 @@ Versions follow semver; release-please derives them from PR titles (`fix` bumps 
 4. Approve the `release` deployment in the Actions tab. The workflow attaches the assets and install notes.
 5. Spot-check the release page and run the install one-liner on one machine.
 
-To rebuild assets for an existing tag, run the Release workflow manually with that tag.
+To rebuild assets for an existing tag, run the Release workflow manually with that tag. It builds the tag's commit, not main, and refuses to replace the assets of a release whose target commit isn't that commit.
+
+### Release pipeline
+
+`release.yml` runs these jobs in order:
+
+* `release-please` (pushes to main only) opens the release PR or tags the release.
+* `target` checks the tag name.
+* `build` (`build.yml`) checks out `refs/tags/<tag>`, fails unless `HEAD` is the tag's commit, builds the AppImage in the container and uploads the assets. Its outputs are the commit and the `sha256sum` of every uploaded file.
+* `lgpl-sources` checks the downloaded assets against those hashes, reads the AppImage runtime version from its ELF headers (`scripts/fetch-lgpl-sources.sh`, which never runs the AppImage), downloads the LGPL sources and uploads `Whisker-lgpl-sources.tar` with its hash.
+* `publish` is the only job in the `release` environment and the only one that can read `WHISKER_SIGNING_KEY`. It checks out the tag again and fails if it moved, refuses an existing release whose target commit differs, checks every downloaded file against the hashes from the earlier jobs (and that there are no others), attests, signs and uploads.
+
+Keep `publish` that small. It must never run anything the build produced or anything else that isn't a pinned Action, `gh`, minisign (pinned SHA-256) or a script from the tag: a leftover process could read the key from the environment or the key file. Anything that needs to run or unpack build output goes in a job without the environment. Only the signing step gets the secrets; `scripts/sign-release.sh` writes the key to a private temp dir, drops the variables before starting other programs and deletes the file after signing.
 
 PRs opened with the default `GITHUB_TOKEN` count as coming from an outside contributor, so their CI waits for "Approve and run" and the Conventions check never starts. The workflows use the release app token to avoid that (see Release app). release-please's own PR fills in the template through `pull-request-header` and `pull-request-footer` in `release-please-config.json`, so it passes the Conventions check like any other PR.
 
@@ -112,8 +124,10 @@ Without the variable the workflows fall back to `GITHUB_TOKEN` and log a warning
 ## Dependency updates
 
 * GitHub Actions: Dependabot PRs (`ci: bump ...`). Actions are pinned to full commit SHAs; check the release notes before merging.
-* transcribe.cpp and Dear ImGui: `deps-bump.yml` PRs. They change the pins in `CMakeLists.txt`; CI builds and tests them. Read the upstream changes first, and run `make deck-test` for transcribe.cpp bumps since inference speed on the Deck matters.
-* Static C libraries (cairo, SDL2, freetype, ...) and the Arch snapshot: update the versions and `ARCH_MIRROR` in `Containerfile` by hand every few months, then update `THIRD_PARTY_NOTICES.md`.
+* transcribe.cpp and Dear ImGui: `deps-bump.yml` PRs. They change the pins in `CMakeLists.txt` (a commit SHA, with the release tag in a comment for Dear ImGui); CI builds and tests them. Read the upstream changes first, and run `make deck-test` for transcribe.cpp bumps since inference speed on the Deck matters.
+* Monocypher (the signature verifier) by hand: set `MONOCYPHER_TAG` to the release tag's commit and keep the tag in the comment. `git ls-remote https://github.com/LoupVaillant/Monocypher 'refs/tags/<tag>*'` shows it (use the `^{}` line for an annotated tag).
+* Static C libraries (cairo, SDL2, freetype, ...) and the Arch snapshot: update the versions and `ARCH_MIRROR` in `Containerfile` by hand every few months, then update `THIRD_PARTY_NOTICES.md`. Every `fetch-source` line pins the tarball's SHA-256. For a new version, download the exact URL, check it against what upstream publishes (GPG signature or checksum file: cairo and pixman publish `.sha256sum`/`.sha512`, Xiph a `SHA256SUMS.txt`, freetype, SDL2, libevdev and zlib sign their tarballs; for the libpng GitHub archive, compare it with a clone of the signed tag), then put `sha256sum` of the file in the Containerfile.
+* The base image is pinned by digest. It only bootstraps pacman, which moves everything to the snapshot, so bump it when the build breaks or every few months: pick the newest `base-YYYYMMDD.0.N` tag on Docker Hub and use the digest the registry reports for it (`skopeo inspect --raw docker://docker.io/library/archlinux:<tag> | sha256sum`, the same digest Docker Hub lists for the tag). Keep the tag in the `FROM` line next to the digest.
 * The scheduled build warns early when upstream changes break the build.
 
 ## One-time GitHub setup
