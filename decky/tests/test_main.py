@@ -393,3 +393,158 @@ def test_default_backend_to_cpu_only_when_unset():
     config = {"backend": "vulkan"}
     assert not main.default_backend_to_cpu(config)
     assert config["backend"] == "vulkan"
+
+
+SHOW_EXEC_START = (
+    "{ path=/opt/apps/Whisker-x86_64.AppImage ; argv[]=/opt/apps/Whisker-x86_64.AppImage ; "
+    "ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }"
+)
+
+
+def test_appimage_comes_from_the_service_then_the_default(monkeypatch):
+    monkeypatch.setattr(main, "HOME", Path("/srv/u"))
+    assert main.appimage_candidates(SHOW_EXEC_START) == [
+        Path("/opt/apps/Whisker-x86_64.AppImage"),
+        Path("/srv/u/Applications/Whisker-x86_64.AppImage"),
+    ]
+
+
+@pytest.mark.parametrize("show", [
+    "", "{ path=/srv/u/.local/bin/whisker ; argv[]=whisker }", "{ path=relative.AppImage }"])
+def test_non_appimage_services_fall_back_to_the_default(monkeypatch, show):
+    monkeypatch.setattr(main, "HOME", Path("/srv/u"))
+    assert main.appimage_candidates(show) == [Path("/srv/u/Applications/Whisker-x86_64.AppImage")]
+
+
+def test_parse_check_update_up_to_date():
+    assert main.parse_check_update(0, "Whisker 1.3.1 is up to date", "") == {
+        "available": False, "latest": "", "error": ""}
+
+
+def test_parse_check_update_available():
+    out = "Whisker v1.4.0 is available (this is 1.3.1). Install it with: whisker --update"
+    assert main.parse_check_update(0, out, "") == {"available": True, "latest": "v1.4.0", "error": ""}
+
+
+@pytest.mark.parametrize(("rc", "stderr", "error"), [
+    (1, "whisker: update failed: the release manifest for v1.4.0 is not trusted: bad signature",
+     "the release manifest for v1.4.0 is not trusted: bad signature"),
+    (2, "whisker: unknown argument '--check-update'\n",
+     "This Whisker version can't update itself. Rerun the installer."),
+    (1, "", "The updater failed (exit code 1)"),
+])
+def test_parse_check_update_errors(rc, stderr, error):
+    assert main.parse_check_update(rc, "", stderr) == {"available": False, "latest": "", "error": error}
+
+
+def test_parse_check_update_rejects_unknown_output():
+    result = main.parse_check_update(0, "Whisker v1.4.0 might be out there", "")
+    assert not result["available"]
+    assert result["error"].startswith("Unexpected answer")
+
+
+def test_parse_update_result():
+    assert main.parse_update_result(0, "Downloading Whisker v1.4.0\nUpdated Whisker to v1.4.0\n", "") == {
+        "ok": True, "message": "Updated Whisker to v1.4.0"}
+    assert main.parse_update_result(1, "", "whisker: update failed: Whisker is busy recording; try again") == {
+        "ok": False, "message": "Whisker is busy recording; try again"}
+
+
+def test_parse_version_output():
+    assert main.parse_version_output("whisker 1.3.1\n") == "1.3.1"
+    assert main.parse_version_output("garbage") == ""
+
+
+@pytest.fixture
+def updater(tmp_path, monkeypatch):
+    """A fake AppImage in ~/Applications that records its arguments, and a service without ExecStart."""
+    monkeypatch.setattr(main, "HOME", tmp_path)
+    monkeypatch.setattr(main, "_user_env", lambda: dict(os.environ))
+    monkeypatch.setattr(main, "_socket_path", lambda: str(tmp_path / "whisker.sock"))
+    monkeypatch.setattr(main.decky, "logger", logging.getLogger("test"), raising=False)
+    real_run_split = main._run_split
+
+    async def run_split(cmd):
+        return (1, "", "") if cmd[0] == "systemctl" else await real_run_split(cmd)
+
+    monkeypatch.setattr(main, "_run_split", run_split)
+    appimage = tmp_path / "Applications" / main.APPIMAGE_NAME
+    appimage.parent.mkdir()
+    appimage.write_text(
+        "#!/bin/sh\n"
+        f'echo "$@" >> {tmp_path / "calls"}\n'
+        'case "$1" in\n'
+        '  --version) echo "whisker 1.3.1" ;;\n'
+        '  --check-update) echo "Whisker v1.4.0 is available (this is 1.3.1). Install it with: whisker --update" ;;\n'
+        '  --update) echo "Downloading Whisker v1.4.0"; echo "Updated Whisker to v1.4.0" ;;\n'
+        "esac\n"
+    )
+    appimage.chmod(0o755)
+    return tmp_path
+
+
+def calls(home: Path) -> list[str]:
+    path = home / "calls"
+    return path.read_text().splitlines() if path.exists() else []
+
+
+def test_check_update_runs_the_installed_appimage(updater):
+    result = asyncio.run(main.Plugin().check_update())
+    assert result == {"current": "1.3.1", "available": True, "latest": "v1.4.0", "updating": False, "error": ""}
+    assert calls(updater) == ["--version", "--check-update"]
+
+
+def test_run_update_runs_the_installed_appimage(updater):
+    assert asyncio.run(main.Plugin().run_update()) == {"ok": True, "message": "Updated Whisker to v1.4.0"}
+    assert calls(updater) == ["--update"]
+
+
+def test_no_appimage_runs_nothing(updater):
+    (updater / "Applications" / main.APPIMAGE_NAME).unlink()
+    plugin = main.Plugin()
+    assert asyncio.run(plugin.check_update())["error"] == main.NO_APPIMAGE
+    assert asyncio.run(plugin.run_update()) == {"ok": False, "message": main.NO_APPIMAGE}
+
+
+def serve_status(path: Path, reply: bytes | None):
+    """A command socket that answers `status` with reply, or never answers if reply is None."""
+    async def handle(reader, writer):
+        await reader.readline()
+        if reply is None:
+            await asyncio.sleep(1)
+        else:
+            writer.write(reply)
+            await writer.drain()
+        writer.close()
+
+    return asyncio.start_unix_server(handle, str(path))
+
+
+def with_daemon(home: Path, reply: bytes | None, coro_fn):
+    async def run():
+        server = await serve_status(home / "whisker.sock", reply)
+        async with server:
+            return await coro_fn()
+
+    return asyncio.run(run())
+
+
+@pytest.mark.parametrize(("reply", "state"), [(b"idle\n", "idle"), (b"recording\n", "busy"), (None, "busy")])
+def test_daemon_state(updater, monkeypatch, reply, state):
+    monkeypatch.setattr(main, "STATUS_TIMEOUT_S", 0.1)
+    assert with_daemon(updater, reply, main.daemon_state) == state
+
+
+def test_daemon_state_without_a_daemon(updater):
+    assert asyncio.run(main.daemon_state()) == "absent"
+
+
+def test_update_refused_while_recording(updater):
+    result = with_daemon(updater, b"recording\n", main.Plugin().run_update)
+    assert result == {"ok": False, "message": "Whisker is recording. Update when it's done."}
+    assert calls(updater) == []
+
+
+def test_update_runs_while_idle(updater):
+    assert with_daemon(updater, b"idle\n", main.Plugin().run_update)["ok"]
+    assert calls(updater) == ["--update"]

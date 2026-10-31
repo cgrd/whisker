@@ -24,7 +24,9 @@ An update:
 
 Every failure is logged and leaves the installed AppImage untouched. There are no retry loops: curl retries a transient error once, and the next try is the next day's run. Source builds and anything not started from the AppImage refuse to update themselves; use `git pull && make install` or the installer.
 
-The Decky plugin isn't updated this way, because its folder belongs to root. Rerun the installer for that.
+The Decky panel's Updates section runs the same checks. Opening the panel runs `--check-update` on the installed AppImage (the one the `whisker` service starts, else `~/Applications/Whisker-x86_64.AppImage`) and shows the version and whether a newer signed release exists. Update runs `--update`; the button is disabled while Whisker is recording, and the result shows below it. The plugin runs only those two fixed commands and never polls for updates.
+
+The Decky plugin itself isn't updated this way, because its folder belongs to root. Rerun the installer for that.
 
 ## Verifying a release by hand
 
