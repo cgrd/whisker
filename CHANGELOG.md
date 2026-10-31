@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/cgrd/whisker/compare/v1.2.0...v1.3.0) (2026-10-31)
+
+
+### Features
+
+* Stadia trigger buttons and game chat profiles ([#37](https://github.com/cgrd/whisker/issues/37)) ([1e9c0dd](https://github.com/cgrd/whisker/commit/1e9c0dd83f63701ea15bdf4fe3b4eaf6f6f5ba3d))
+* **update:** signed automatic updates ([#39](https://github.com/cgrd/whisker/issues/39)) ([8416c86](https://github.com/cgrd/whisker/commit/8416c8656f34f5b67da490f54ccb276045c2ead4))
+
 ## [1.2.0](https://github.com/cgrd/whisker/compare/v1.1.1...v1.2.0) (2026-10-26)
 
 
