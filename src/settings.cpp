@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "settings.h"
+#include "command.h"
 #include "config.h"
 #include "trigger_capture.h"
 #include "models.h"
@@ -805,11 +806,6 @@ static void drawPedals(Config& cfg, SettingsLayout& layout) {
     drawPedalConfig("Right", cfg.pedals[2]);
     ImGui::EndChild();
     trackItem(layout, "right_pedal");
-}
-
-static std::string commandSocketPath() {
-    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-    return std::string(runtime ? runtime : "/tmp") + "/whisker.sock";
 }
 
 // The daemon waits up to 10 s for a button, so give it a little longer before giving up.

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "command.h"
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -14,6 +15,12 @@ static constexpr size_t kMaxCommand = 64;
 static constexpr int kReadTimeoutUs = 500000;
 
 bool CommandSocket::init(const std::string& path) {
+    if (path.empty()) {
+        std::string error;
+        runtimeDir(error);
+        fprintf(stderr, "command: no socket: %s\n", error.c_str());
+        return false;
+    }
     path_ = path;
     ::unlink(path.c_str());
 
@@ -75,13 +82,38 @@ void CommandSocket::reply(const std::string& line) {
         fprintf(stderr, "command: reply failed: %s\n", strerror(errno));
 }
 
+std::string runtimeDir(std::string& error) {
+    const char* env = getenv("XDG_RUNTIME_DIR");
+    if (!env || env[0] != '/') {
+        error = "XDG_RUNTIME_DIR is not set to an absolute path";
+        return "";
+    }
+    std::string dir = env;
+    int fd = ::open(dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    struct stat st;
+    if (fd < 0 || fstat(fd, &st) != 0) {
+        error = "cannot open XDG_RUNTIME_DIR " + dir + ": " + strerror(errno);
+        if (fd >= 0) ::close(fd);
+        return "";
+    }
+    ::close(fd);
+    if (st.st_uid != geteuid() || (st.st_mode & 077) != 0) {
+        error = "XDG_RUNTIME_DIR " + dir + " must be owned by this user and closed to others (mode 0700)";
+        return "";
+    }
+    error.clear();
+    return dir;
+}
+
 std::string commandSocketPath() {
-    const char* dir = getenv("XDG_RUNTIME_DIR");
-    return std::string(dir ? dir : "/tmp") + "/whisker.sock";
+    std::string error;
+    std::string dir = runtimeDir(error);
+    return dir.empty() ? "" : dir + "/whisker.sock";
 }
 
 bool sendCommand(const std::string& path, const std::string& command, std::string& reply, int timeout_ms) {
     reply.clear();
+    if (path.empty()) return false;
     int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (fd < 0) return false;
     struct sockaddr_un addr = {};

@@ -51,6 +51,7 @@ whisker_test(test_models ${CMAKE_SOURCE_DIR}/src/models.cpp ${CMAKE_SOURCE_DIR}/
 target_include_directories(test_models PRIVATE ${CMAKE_BINARY_DIR})
 
 whisker_test(test_spawn ${CMAKE_SOURCE_DIR}/src/spawn.cpp)
+whisker_test(test_command ${CMAKE_SOURCE_DIR}/src/command.cpp)
 
 whisker_test(test_update ${CMAKE_SOURCE_DIR}/src/update.cpp)
 target_link_libraries(test_update PRIVATE monocypher)
@@ -75,6 +76,7 @@ whisker_test(test_settings
     ${CMAKE_SOURCE_DIR}/src/config.cpp
     ${CMAKE_SOURCE_DIR}/src/chat_profile.cpp
     ${CMAKE_SOURCE_DIR}/src/models.cpp
+    ${CMAKE_SOURCE_DIR}/src/command.cpp
     ${CMAKE_SOURCE_DIR}/src/sha256.cpp)
 target_include_directories(test_settings PRIVATE ${PIPEWIRE_INCLUDE_DIRS} ${SDL2_INCLUDE_DIRS})
 target_link_libraries(test_settings PRIVATE imgui whisker_assets ${PIPEWIRE_LIBRARIES} ${SDL2_LIBRARIES})

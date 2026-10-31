@@ -100,11 +100,15 @@ std::string runningAppImage(std::string& path) {
 }
 
 // Two updates at once (timer and a manual run) would write the same .part file
-bool lockUpdates() {
-    std::string path = commandSocketPath();
-    path = path.substr(0, path.rfind('/')) + "/whisker-update.lock";
+std::string lockUpdates() {
+    std::string error;
+    std::string dir = runtimeDir(error);
+    if (dir.empty()) return "cannot lock updates: " + error;
+    std::string path = dir + "/whisker-update.lock";
     int fd = open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0600);
-    return fd >= 0 && flock(fd, LOCK_EX | LOCK_NB) == 0;
+    if (fd < 0) return "cannot open " + path + ": " + strerror(errno);
+    if (flock(fd, LOCK_EX | LOCK_NB) != 0) return "another update is already running";
+    return "";
 }
 
 std::string installAppImage(const std::string& base_url, const Manifest& manifest, const std::string& appimage,
@@ -144,7 +148,8 @@ int runUpdate(UpdateMode mode, const std::string& config_path) {
     if (mode != UpdateMode::Check) {
         std::string error = runningAppImage(appimage);
         if (!error.empty()) return fail(error);
-        if (!lockUpdates()) return fail("another update is already running");
+        error = lockUpdates();
+        if (!error.empty()) return fail(error);
     }
     if (!hasReleaseSigningKey())
         return fail("this build has no release signing key, so it cannot verify updates. Update with install.sh");

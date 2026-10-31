@@ -4,7 +4,12 @@
 
 enum class Command { None, Start, Stop, Capture, Status };
 
-// $XDG_RUNTIME_DIR/whisker.sock
+// $XDG_RUNTIME_DIR if it is a real directory owned by this user and closed to everyone else;
+// otherwise "" and error says why. Never falls back to a shared directory like /tmp, where
+// another user could create the socket or lock first.
+std::string runtimeDir(std::string& error);
+
+// $XDG_RUNTIME_DIR/whisker.sock, or "" without a safe runtime directory.
 std::string commandSocketPath();
 
 // Sends one command line to a running daemon and stores its one-line reply. Returns false if no
