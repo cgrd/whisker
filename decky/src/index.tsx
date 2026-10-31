@@ -16,7 +16,9 @@ import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { FaMicrophone } from "react-icons/fa";
 
 type Config = Record<string, unknown>;
-type Status = { running: boolean; enabled: boolean };
+type Status = { running: boolean; enabled: boolean; recording: boolean };
+type UpdateCheck = { current: string; available: boolean; latest: string; updating: boolean; error: string };
+type UpdateResult = { ok: boolean; message: string };
 type AudioSource = { id: string; name: string };
 type ModelStatus = {
     configured: string;
@@ -61,6 +63,8 @@ const downloadModel = callable<[file: string], boolean>("download_model");
 const cancelDownload = callable<[], void>("cancel_download");
 const captureButton = callable<[], CaptureResult>("capture_button");
 const getChatProfiles = callable<[], string[]>("get_chat_profiles");
+const checkUpdate = callable<[], UpdateCheck>("check_update");
+const runUpdate = callable<[], UpdateResult>("run_update");
 
 const DEFAULTS: Record<string, Value> = {
     model: "",
@@ -136,6 +140,21 @@ function defaultFor(path: string): Value {
 const row = (child: ReactNode) => <PanelSectionRow>{child}</PanelSectionRow>;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function updateLabel(check: UpdateCheck | null, updating: boolean): string {
+    const current = check?.current ? `Whisker ${check.current}` : "Whisker";
+    if (updating) return `${current}: updating...`;
+    if (!check) return `${current}: checking for updates...`;
+    if (check.error) return current;
+    return check.available ? `${current}: ${check.latest} available` : `${current}: up to date`;
+}
+
+function updateDescription(check: UpdateCheck | null, updating: boolean, busy: boolean): string {
+    if (updating) return "Downloading and verifying the signed release";
+    if (check?.error) return check.error;
+    if (busy && check?.available) return "Available once Whisker stops recording";
+    return "Only signed releases are installed";
+}
+
 function WhiskerPanel() {
     const [running, setRunning] = useState(false);
     const [recording, setRecording] = useState(false);
@@ -151,6 +170,10 @@ function WhiskerPanel() {
     const [chatProfiles, setChatProfiles] = useState<string[]>([]);
     const [config, setConfig] = useState<Config>({});
     const [captureText, setCaptureText] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [updateCheck, setUpdateCheck] = useState<UpdateCheck | null>(null);
+    const [updating, setUpdating] = useState(false);
+    const [updateResult, setUpdateResult] = useState<UpdateResult | null>(null);
     const mountedRef = useRef(true);
     const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
     const restartTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -160,6 +183,7 @@ function WhiskerPanel() {
         if (!mountedRef.current) return;
         setRunning(status.running);
         setEnabled(status.enabled);
+        setBusy(status.recording);
     }, []);
 
     useEffect(() => {
@@ -176,6 +200,12 @@ function WhiskerPanel() {
         (async () => {
             const p = await getChatProfiles();
             if (mountedRef.current) setChatProfiles(p);
+        })();
+        (async () => {
+            const u = await checkUpdate();
+            if (!mountedRef.current) return;
+            setUpdateCheck(u);
+            setUpdating(u.updating);
         })();
         (async () => {
             const k = await getKnownModels();
@@ -297,6 +327,16 @@ function WhiskerPanel() {
             const ok = await startRecording();
             if (ok) setRecording(true);
         }
+    };
+
+    const handleUpdate = async () => {
+        setUpdating(true);
+        setUpdateResult(null);
+        const result = await runUpdate();
+        if (!mountedRef.current) return;
+        setUpdating(false);
+        setUpdateResult(result);
+        if (result.ok) setUpdateCheck(await checkUpdate());
     };
 
     const handleRestart = async () => {
@@ -457,6 +497,17 @@ function WhiskerPanel() {
                 {slider("history", "History Entries", 0, 100, 5, "Transcriptions to keep")}
                 {toggle("tray", "Tray Icon", "Show system tray icon (desktop mode)")}
                 {toggle("auto_update", "Automatic Updates", "Install signed Whisker releases once a day, never while recording")}
+            </PanelSection>
+            <PanelSection title="Updates">
+                {row(<ButtonItem label={updateLabel(updateCheck, updating)}
+                    description={updateDescription(updateCheck, updating, busy)}
+                    onClick={handleUpdate} disabled={!updateCheck?.available || updating || busy} layout="below">
+                    {updateCheck?.available ? `Update to ${updateCheck.latest}` : "Update"}
+                </ButtonItem>)}
+                {updateResult && row(<div style={{ padding: "8px", fontSize: "12px",
+                    color: updateResult.ok ? undefined : "#ff8080" }}>
+                    {updateResult.message}
+                </div>)}
             </PanelSection>
             <PanelSection title="Troubleshooting">
                 {row(<ButtonItem label="Restart Service" description="Stop and restart Whisker"

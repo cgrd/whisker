@@ -3,6 +3,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 
 import decky
@@ -278,7 +279,7 @@ def _user_env() -> dict:
     }
 
 
-async def _run(cmd: list[str]) -> tuple[int, str]:
+async def _run_split(cmd: list[str]) -> tuple[int, str, str]:
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
@@ -286,12 +287,95 @@ async def _run(cmd: list[str]) -> tuple[int, str]:
         env=_user_env(),
     )
     stdout, stderr = await proc.communicate()
-    output = stdout.decode().strip() if stdout else stderr.decode().strip()
-    return proc.returncode, output
+    return proc.returncode, stdout.decode(errors="replace").strip(), stderr.decode(errors="replace").strip()
+
+
+async def _run(cmd: list[str]) -> tuple[int, str]:
+    rc, stdout, stderr = await _run_split(cmd)
+    return rc, stdout or stderr
+
+
+APPIMAGE_NAME = "Whisker-x86_64.AppImage"
+STATUS_TIMEOUT_S = 3
+
+
+def exec_start_path(show_output: str) -> Path | None:
+    """The program in `systemctl show -p ExecStart --value` output, if it's an absolute path."""
+    match = re.search(r"\bpath=([^ ;]+)", show_output)
+    return Path(match.group(1)) if match and match.group(1).startswith("/") else None
+
+
+def appimage_candidates(show_output: str) -> list[Path]:
+    # The service the plugin starts first, then the installer's default location
+    candidates = [exec_start_path(show_output), HOME / "Applications" / APPIMAGE_NAME]
+    return [p for p in candidates if p and p.name.endswith(".AppImage")]
+
+
+def _last_line(text: str) -> str:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return lines[-1] if lines else ""
+
+
+def update_error(rc: int, stderr: str) -> str:
+    if rc == 2 and "unknown argument" in stderr:
+        return "This Whisker version can't update itself. Rerun the installer."
+    line = _last_line(stderr)
+    for prefix in ("whisker: update failed: ", "whisker: "):
+        line = line.removeprefix(prefix)
+    return line or f"The updater failed (exit code {rc})"
+
+
+def parse_version_output(stdout: str) -> str:
+    match = re.fullmatch(r"whisker (\d+\.\d+\.\d+)", stdout.strip())
+    return match.group(1) if match else ""
+
+
+def parse_check_update(rc: int, stdout: str, stderr: str) -> dict:
+    """Reads `whisker --check-update`: up to date, a newer verified release, or an error."""
+    if rc != 0:
+        return {"available": False, "latest": "", "error": update_error(rc, stderr)}
+    match = re.search(r"^Whisker (v\d+\.\d+\.\d+) is available", stdout, re.MULTILINE)
+    if match:
+        return {"available": True, "latest": match.group(1), "error": ""}
+    if re.search(r"^Whisker \S+ is up to date", stdout, re.MULTILINE):
+        return {"available": False, "latest": "", "error": ""}
+    return {"available": False, "latest": "", "error": f"Unexpected answer from the updater: {_last_line(stdout)}"}
+
+
+def parse_update_result(rc: int, stdout: str, stderr: str) -> dict:
+    if rc != 0:
+        return {"ok": False, "message": update_error(rc, stderr)}
+    return {"ok": True, "message": _last_line(stdout) or "Done"}
+
+
+async def _find_appimage() -> Path | None:
+    _, show, _ = await _run_split(["systemctl", "--user", "show", "whisker", "-p", "ExecStart", "--value"])
+    return next((p for p in appimage_candidates(show) if p.is_file() and os.access(p, os.X_OK)), None)
+
+
+async def daemon_state() -> str:
+    """idle, busy or absent. A daemon that is transcribing doesn't read the socket, so no answer counts as busy."""
+    try:
+        reader, writer = await asyncio.open_unix_connection(_socket_path())
+    except OSError:
+        return "absent"
+    try:
+        writer.write(b"status\n")
+        await writer.drain()
+        line = await asyncio.wait_for(reader.readline(), STATUS_TIMEOUT_S)
+    except (OSError, asyncio.TimeoutError):
+        return "busy"
+    finally:
+        writer.close()
+    return "idle" if line.decode(errors="replace").strip() == "idle" else "busy"
+
+
+NO_APPIMAGE = "Whisker isn't installed as an AppImage, so it can't update itself here. Rerun the installer."
 
 
 class Plugin:
     _download_error = ""
+    _updating = False
 
     async def get_status(self) -> dict:
         rc_active, _ = await _run(["systemctl", "--user", "is-active", "whisker"])
@@ -299,7 +383,33 @@ class Plugin:
         return {
             "running": rc_active == 0,
             "enabled": rc_enabled == 0,
+            "recording": rc_active == 0 and await daemon_state() == "busy",
         }
+
+    async def check_update(self) -> dict:
+        appimage = await _find_appimage()
+        if not appimage:
+            return {"current": "", "available": False, "latest": "", "updating": False, "error": NO_APPIMAGE}
+        _, version, _ = await _run_split([str(appimage), "--version"])
+        result = parse_check_update(*await _run_split([str(appimage), "--check-update"]))
+        return {"current": parse_version_output(version), "updating": self._updating, **result}
+
+    async def run_update(self) -> dict:
+        if self._updating:
+            return {"ok": False, "message": "An update is already running"}
+        appimage = await _find_appimage()
+        if not appimage:
+            return {"ok": False, "message": NO_APPIMAGE}
+        if await daemon_state() == "busy":
+            return {"ok": False, "message": "Whisker is recording. Update when it's done."}
+        self._updating = True
+        try:
+            result = parse_update_result(*await _run_split([str(appimage), "--update"]))
+        finally:
+            self._updating = False
+        log = decky.logger.info if result["ok"] else decky.logger.error
+        log(f"Update: {result['message']}")
+        return result
 
     async def start_service(self) -> None:
         await _run(["systemctl", "--user", "start", "whisker"])

@@ -98,6 +98,8 @@ const downloadModel = callable("download_model");
 const cancelDownload = callable("cancel_download");
 const captureButton = callable("capture_button");
 const getChatProfiles = callable("get_chat_profiles");
+const checkUpdate = callable("check_update");
+const runUpdate = callable("run_update");
 const DEFAULTS = {
     model: "",
     backend: "cpu",
@@ -165,6 +167,25 @@ function defaultFor(path) {
 }
 const row = (child) => SP_JSX.jsx(DFL.PanelSectionRow, { children: child });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+function updateLabel(check, updating) {
+    const current = check?.current ? `Whisker ${check.current}` : "Whisker";
+    if (updating)
+        return `${current}: updating...`;
+    if (!check)
+        return `${current}: checking for updates...`;
+    if (check.error)
+        return current;
+    return check.available ? `${current}: ${check.latest} available` : `${current}: up to date`;
+}
+function updateDescription(check, updating, busy) {
+    if (updating)
+        return "Downloading and verifying the signed release";
+    if (check?.error)
+        return check.error;
+    if (busy && check?.available)
+        return "Available once Whisker stops recording";
+    return "Only signed releases are installed";
+}
 function WhiskerPanel() {
     const [running, setRunning] = SP_REACT.useState(false);
     const [recording, setRecording] = SP_REACT.useState(false);
@@ -180,6 +201,10 @@ function WhiskerPanel() {
     const [chatProfiles, setChatProfiles] = SP_REACT.useState([]);
     const [config, setConfig] = SP_REACT.useState({});
     const [captureText, setCaptureText] = SP_REACT.useState("");
+    const [busy, setBusy] = SP_REACT.useState(false);
+    const [updateCheck, setUpdateCheck] = SP_REACT.useState(null);
+    const [updating, setUpdating] = SP_REACT.useState(false);
+    const [updateResult, setUpdateResult] = SP_REACT.useState(null);
     const mountedRef = SP_REACT.useRef(true);
     const saveTimers = SP_REACT.useRef({});
     const restartTimer = SP_REACT.useRef(undefined);
@@ -189,6 +214,7 @@ function WhiskerPanel() {
             return;
         setRunning(status.running);
         setEnabled(status.enabled);
+        setBusy(status.recording);
     }, []);
     SP_REACT.useEffect(() => {
         mountedRef.current = true;
@@ -207,6 +233,13 @@ function WhiskerPanel() {
             const p = await getChatProfiles();
             if (mountedRef.current)
                 setChatProfiles(p);
+        })();
+        (async () => {
+            const u = await checkUpdate();
+            if (!mountedRef.current)
+                return;
+            setUpdateCheck(u);
+            setUpdating(u.updating);
         })();
         (async () => {
             const k = await getKnownModels();
@@ -310,6 +343,17 @@ function WhiskerPanel() {
                 setRecording(true);
         }
     };
+    const handleUpdate = async () => {
+        setUpdating(true);
+        setUpdateResult(null);
+        const result = await runUpdate();
+        if (!mountedRef.current)
+            return;
+        setUpdating(false);
+        setUpdateResult(result);
+        if (result.ok)
+            setUpdateCheck(await checkUpdate());
+    };
     const handleRestart = async () => {
         setRecording(false);
         await restartService();
@@ -388,7 +432,8 @@ function WhiskerPanel() {
     return (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Service", children: [row(SP_JSX.jsx(DFL.ToggleField, { label: "Whisker", description: running ? "Running" : "Stopped", checked: running, onChange: toggleRunning })), row(SP_JSX.jsx(DFL.ToggleField, { label: "Auto-Start", description: "Start on login", checked: enabled, onChange: toggleEnabled })), running && row(SP_JSX.jsx(DFL.ButtonItem, { label: recording ? "Stop Recording" : "Record", description: recording ? "Recording in progress..." : "Tap to start dictation", onClick: toggleRecording, layout: "below" })), lastTranscription && row(SP_JSX.jsx("div", { style: { fontSize: "12px", padding: "8px", background: "rgba(0,0,0,0.2)",
                             borderRadius: "4px", fontStyle: "italic" }, children: lastTranscription }))] }), SP_JSX.jsxs(DFL.PanelSection, { title: "Model", children: [!hasModel && row(SP_JSX.jsx("div", { style: { padding: "8px", fontSize: "12px" }, children: "Pick a speech model to start dictating. Nothing downloads until you choose one." })), hasModel && modelOptions.length > 0 &&
                         dropdown("model", "Transcription Model", modelOptions, selectedModel?.note), downloadingModel ? (SP_JSX.jsxs(SP_JSX.Fragment, { children: [row(SP_JSX.jsx("div", { style: { padding: "8px", fontSize: "12px" }, children: `Downloading ${downloadingModel.label}: ${modelStatus?.progress_mb ?? 0}`
-                                    + ` / ${modelStatus?.total_mb ?? 0} MB` })), row(SP_JSX.jsx(DFL.ButtonItem, { label: "Cancel Download", onClick: handleCancelDownload, layout: "below" }))] })) : knownModels?.models.map(modelChoice), modelStatus?.error && row(SP_JSX.jsx("div", { style: { padding: "8px", fontSize: "12px", color: "#ff8080" }, children: modelStatus.error })), knownModels && link("Model Files", knownModels.repo), knownModels && link("Original NVIDIA Model", knownModels.original)] }), SP_JSX.jsxs(DFL.PanelSection, { title: "Trigger", children: [dropdown("trigger_button", "Controller Button", triggerOptions, "Hold to talk. Unmap this button in Steam Input so no game uses it"), row(SP_JSX.jsx(DFL.ButtonItem, { label: "Press the Button You Want", description: captureText || "Works with any connected controller; hold two buttons for a chord", onClick: handleCapture, layout: "below" })), dropdown("trigger_mode", "Mode", modeOptions, "Hold: release to stop. Toggle: press again to stop.")] }), SP_JSX.jsxs(DFL.PanelSection, { title: "Audio", children: [dropdown("audio_device", "Input Device", audioOptions), slider("noise_threshold", "Noise Gate", 0, 0.01, 0.0001, "Ignore audio quieter than this")] }), SP_JSX.jsxs(DFL.PanelSection, { title: "Overlay", children: [toggle("overlay", "Show Overlay", "Show overlay during recording"), dropdown("overlay_position", "Position", overlayPositionOptions, "Where the overlay appears on screen")] }), SP_JSX.jsxs(DFL.PanelSection, { title: "Feedback", children: [toggle("audio_cue", "Audio Cue", "Beep on record start/stop"), toggle("haptic", "Haptic Feedback", "Controller vibration on record start/stop")] }), SP_JSX.jsxs(DFL.PanelSection, { title: "Text Processing", children: [toggle("dictation_commands", "Dictation Commands", "Replace 'period', 'comma', etc. with punctuation"), toggle("auto_capitalize", "Auto-Capitalize", "Capitalize after sentences and newlines"), toggle("undo_enabled", "Undo", "Quick tap to delete last transcription"), dropdown("submit_key", "Send After Dictation", submitKeyOptions, "Key pressed after the text is typed"), row(SP_JSX.jsx(DFL.DropdownItem, { label: "Game Chat", rgOptions: chatProfileOptions, description: "Opens the chat box and turns \"party, ...\" into /p. Automatic picks the profile of the running game", selectedOption: get("chat_profile") || "none", onChange: (o) => update("chat_profile", o.data) })), slider("recording_timeout", "Recording Timeout", 0, 120, 5, "Auto-stop after N seconds (0 = no limit)")] }), PEDALS.map(pedalSection), SP_JSX.jsxs(DFL.PanelSection, { title: "Advanced", children: [text("trigger_key", "Keyboard Shortcut", "Hold to record, e.g. ctrl+shift+space. Empty to disable"), dropdown("backend", "Backend", backendOptions, "Takes effect on restart"), text("model", "Model Path", "Path to a GGUF model file"), slider("history", "History Entries", 0, 100, 5, "Transcriptions to keep"), toggle("tray", "Tray Icon", "Show system tray icon (desktop mode)"), toggle("auto_update", "Automatic Updates", "Install signed Whisker releases once a day, never while recording")] }), SP_JSX.jsxs(DFL.PanelSection, { title: "Troubleshooting", children: [row(SP_JSX.jsx(DFL.ButtonItem, { label: "Restart Service", description: "Stop and restart Whisker", onClick: handleRestart, layout: "below" })), row(SP_JSX.jsx(DFL.ButtonItem, { label: "Run Diagnostics", description: diagnosticsText, onClick: handleDiagnostics, layout: "below" })), row(SP_JSX.jsx(DFL.ButtonItem, { label: showLogs ? "Hide Logs" : "View Logs", description: "Show recent service logs", onClick: handleShowLogs, layout: "below" })), showLogs && row(SP_JSX.jsxs("div", { children: [SP_JSX.jsx("pre", { style: { fontSize: "10px", maxHeight: "200px", overflow: "auto", whiteSpace: "pre-wrap",
+                                    + ` / ${modelStatus?.total_mb ?? 0} MB` })), row(SP_JSX.jsx(DFL.ButtonItem, { label: "Cancel Download", onClick: handleCancelDownload, layout: "below" }))] })) : knownModels?.models.map(modelChoice), modelStatus?.error && row(SP_JSX.jsx("div", { style: { padding: "8px", fontSize: "12px", color: "#ff8080" }, children: modelStatus.error })), knownModels && link("Model Files", knownModels.repo), knownModels && link("Original NVIDIA Model", knownModels.original)] }), SP_JSX.jsxs(DFL.PanelSection, { title: "Trigger", children: [dropdown("trigger_button", "Controller Button", triggerOptions, "Hold to talk. Unmap this button in Steam Input so no game uses it"), row(SP_JSX.jsx(DFL.ButtonItem, { label: "Press the Button You Want", description: captureText || "Works with any connected controller; hold two buttons for a chord", onClick: handleCapture, layout: "below" })), dropdown("trigger_mode", "Mode", modeOptions, "Hold: release to stop. Toggle: press again to stop.")] }), SP_JSX.jsxs(DFL.PanelSection, { title: "Audio", children: [dropdown("audio_device", "Input Device", audioOptions), slider("noise_threshold", "Noise Gate", 0, 0.01, 0.0001, "Ignore audio quieter than this")] }), SP_JSX.jsxs(DFL.PanelSection, { title: "Overlay", children: [toggle("overlay", "Show Overlay", "Show overlay during recording"), dropdown("overlay_position", "Position", overlayPositionOptions, "Where the overlay appears on screen")] }), SP_JSX.jsxs(DFL.PanelSection, { title: "Feedback", children: [toggle("audio_cue", "Audio Cue", "Beep on record start/stop"), toggle("haptic", "Haptic Feedback", "Controller vibration on record start/stop")] }), SP_JSX.jsxs(DFL.PanelSection, { title: "Text Processing", children: [toggle("dictation_commands", "Dictation Commands", "Replace 'period', 'comma', etc. with punctuation"), toggle("auto_capitalize", "Auto-Capitalize", "Capitalize after sentences and newlines"), toggle("undo_enabled", "Undo", "Quick tap to delete last transcription"), dropdown("submit_key", "Send After Dictation", submitKeyOptions, "Key pressed after the text is typed"), row(SP_JSX.jsx(DFL.DropdownItem, { label: "Game Chat", rgOptions: chatProfileOptions, description: "Opens the chat box and turns \"party, ...\" into /p. Automatic picks the profile of the running game", selectedOption: get("chat_profile") || "none", onChange: (o) => update("chat_profile", o.data) })), slider("recording_timeout", "Recording Timeout", 0, 120, 5, "Auto-stop after N seconds (0 = no limit)")] }), PEDALS.map(pedalSection), SP_JSX.jsxs(DFL.PanelSection, { title: "Advanced", children: [text("trigger_key", "Keyboard Shortcut", "Hold to record, e.g. ctrl+shift+space. Empty to disable"), dropdown("backend", "Backend", backendOptions, "Takes effect on restart"), text("model", "Model Path", "Path to a GGUF model file"), slider("history", "History Entries", 0, 100, 5, "Transcriptions to keep"), toggle("tray", "Tray Icon", "Show system tray icon (desktop mode)"), toggle("auto_update", "Automatic Updates", "Install signed Whisker releases once a day, never while recording")] }), SP_JSX.jsxs(DFL.PanelSection, { title: "Updates", children: [row(SP_JSX.jsx(DFL.ButtonItem, { label: updateLabel(updateCheck, updating), description: updateDescription(updateCheck, updating, busy), onClick: handleUpdate, disabled: !updateCheck?.available || updating || busy, layout: "below", children: updateCheck?.available ? `Update to ${updateCheck.latest}` : "Update" })), updateResult && row(SP_JSX.jsx("div", { style: { padding: "8px", fontSize: "12px",
+                            color: updateResult.ok ? undefined : "#ff8080" }, children: updateResult.message }))] }), SP_JSX.jsxs(DFL.PanelSection, { title: "Troubleshooting", children: [row(SP_JSX.jsx(DFL.ButtonItem, { label: "Restart Service", description: "Stop and restart Whisker", onClick: handleRestart, layout: "below" })), row(SP_JSX.jsx(DFL.ButtonItem, { label: "Run Diagnostics", description: diagnosticsText, onClick: handleDiagnostics, layout: "below" })), row(SP_JSX.jsx(DFL.ButtonItem, { label: showLogs ? "Hide Logs" : "View Logs", description: "Show recent service logs", onClick: handleShowLogs, layout: "below" })), showLogs && row(SP_JSX.jsxs("div", { children: [SP_JSX.jsx("pre", { style: { fontSize: "10px", maxHeight: "200px", overflow: "auto", whiteSpace: "pre-wrap",
                                     wordBreak: "break-all", background: "rgba(0,0,0,0.3)", padding: "8px",
                                     borderRadius: "4px" }, children: logs }), SP_JSX.jsx(DFL.ButtonItem, { label: "Refresh", onClick: handleRefreshLogs, layout: "below" })] }))] })] }));
 }
