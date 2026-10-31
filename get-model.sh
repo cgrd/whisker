@@ -6,7 +6,7 @@ set -euo pipefail
 
 TABLE="${WHISKER_MODELS_JSON:-$(dirname "$0")/models.json}"
 DEST="$HOME/.local/share/pedal-stt/models"
-VERSION="1.2.0" # x-release-please-version
+VERSION="1.3.0" # x-release-please-version
 
 # model_field <quant> <file|url|size|sha256>
 model_field() {
