@@ -457,6 +457,18 @@ std::string checkManifest(const Manifest& manifest, const std::string& tag, cons
     return "";
 }
 
+std::string appImageBackupPath(const std::string& appimage) {
+    size_t slash = appimage.rfind('/');
+    return appimage.substr(0, slash + 1) + "." + appimage.substr(slash + 1) + ".previous";
+}
+
+bool restartSurvived(const std::vector<bool>& active_samples) {
+    if (active_samples.empty()) return false;
+    for (bool active : active_samples)
+        if (!active) return false;
+    return true;
+}
+
 std::string extractStoredZipEntry(const std::string& zip_path, const std::string& entry,
                                   const std::string& out_path, uint64_t max_size) {
     std::string error = extractEntry(zip_path, entry, out_path, max_size);

@@ -69,7 +69,7 @@ stop_old_install() {
           "$HOME/.config/autostart/whisker.desktop" \
           "$HOME/.local/bin/whisker" \
           "$HOME/.local/bin/pedal-stt" \
-          "$APPIMAGE" \
+          "$APPIMAGE" "$APP_DIR/.Whisker-x86_64.AppImage.previous" \
           "$MENU_ENTRY"
     user_systemctl daemon-reload 2>/dev/null || true
 }

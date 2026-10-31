@@ -321,6 +321,18 @@ static void testExtractZip() {
     fs::remove_all(dir);
 }
 
+static void testRollbackDecision() {
+    CHECK_EQ(appImageBackupPath("/apps/Whisker-x86_64.AppImage"),
+             std::string("/apps/.Whisker-x86_64.AppImage.previous"));
+    CHECK(restartSurvived(std::vector<bool>(kRestartWatchSeconds, true)));
+    CHECK(!restartSurvived({}));
+    // Crashed and came back after RestartSec, or exited and stayed down
+    CHECK(!restartSurvived({true, true, false, false, false, true, true}));
+    CHECK(!restartSurvived({true, true, true, false}));
+    CHECK(!restartSurvived({false, true, true, true}));
+    CHECK(kRestartWatchSeconds >= 10 && kRestartWatchSeconds <= 15);
+}
+
 static void testSigningKeys() {
     auto keys = releaseSigningKeys();
     CHECK(!keys.empty());
@@ -341,6 +353,7 @@ int main(int argc, char** argv) {
     testParseManifest();
     testCheckManifest();
     testExtractZip();
+    testRollbackDecision();
     testSigningKeys();
     return checkReport();
 }

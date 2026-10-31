@@ -76,14 +76,41 @@ bool waitUntilIdle() {
     return false;
 }
 
-void restartService(const std::string& tag) {
-    if (runAndWait({"systemctl", "--user", "--quiet", "is-active", "whisker.service"}) != 0) return;
+bool serviceActive() {
+    return runAndWait({"systemctl", "--user", "--quiet", "is-active", "whisker.service"}) == 0;
+}
+
+// Returns whether the service was restarted onto the new AppImage.
+bool restartService(const std::string& tag) {
+    if (!serviceActive()) return false;
     if (!waitUntilIdle()) {
         printf("Whisker is still busy; it switches to %s the next time it starts\n", tag.c_str());
-        return;
+        return false;
     }
     if (runAndWait({"systemctl", "--user", "restart", "whisker.service"}) != 0)
         fprintf(stderr, "whisker: could not restart the service; restart it to use %s\n", tag.c_str());
+    return true;
+}
+
+std::vector<bool> watchService() {
+    std::vector<bool> samples;
+    for (int i = 0; i < kRestartWatchSeconds; ++i) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        samples.push_back(serviceActive());
+    }
+    return samples;
+}
+
+// A hard link costs nothing and keeps the old AppImage even after the rename replaces its name
+std::string keepBackup(const std::string& appimage, const std::string& backup) {
+    unlink(backup.c_str());
+    if (link(appimage.c_str(), backup.c_str()) == 0) return "";
+    std::string part = backup + ".part";
+    std::error_code ec;
+    std::filesystem::copy_file(appimage, part, std::filesystem::copy_options::overwrite_existing, ec);
+    if (!ec && rename(part.c_str(), backup.c_str()) == 0) return "";
+    unlink(part.c_str());
+    return "cannot keep a copy of the current AppImage to roll back to: " + (ec ? ec.message() : strerror(errno));
 }
 
 std::string runningAppImage(std::string& path) {
@@ -133,7 +160,14 @@ std::string installAppImage(const std::string& base_url, const Manifest& manifes
         unlink(part.c_str());
         return error;
     }
-    return installVerified(part, appimage, manifest.appimage.size, manifest.appimage.sha256);
+    std::string backup = appImageBackupPath(appimage);
+    error = keepBackup(appimage, backup);
+    if (error.empty()) error = installVerified(part, appimage, manifest.appimage.size, manifest.appimage.sha256);
+    if (!error.empty()) {
+        unlink(part.c_str());
+        unlink(backup.c_str());
+    }
+    return error;
 }
 
 } // namespace
@@ -201,7 +235,18 @@ int runUpdate(UpdateMode mode, const std::string& config_path) {
     if (!error.empty()) return fail(error);
     printf("Updated Whisker to %s\n", tag.c_str());
 
-    restartService(tag);
+    std::string backup = appImageBackupPath(appimage);
+    if (restartService(tag) && !restartSurvived(watchService())) {
+        if (rename(backup.c_str(), appimage.c_str()) != 0)
+            return fail("Whisker " + tag + " did not keep running after the restart, and restoring " +
+                        WHISKER_VERSION + " failed: " + strerror(errno));
+        runAndWait({"systemctl", "--user", "restart", "whisker.service"});
+        std::string message = "Whisker " + tag + " did not keep running after the restart, so " + WHISKER_VERSION +
+                              " is back. See journalctl --user -u whisker";
+        if (cfg.tray) notifyDesktop("Whisker update rolled back", message);
+        return fail(message);
+    }
+    unlink(backup.c_str());
     if (cfg.tray) notifyDesktop("Whisker updated", "Updated to " + tag + ". What's new: " + kReleases + "/tag/" + tag);
     return 0;
 }
