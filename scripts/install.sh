@@ -199,7 +199,7 @@ verify_release() {
             fi
             if [ "$rc" -ne 2 ] || ! grep -q "unknown argument" <<<"$out"; then
                 warn "$out"
-                die "your installed Whisker could not verify this download, so nothing was changed. If it's broken, run install.sh --uninstall first."
+                die "your installed Whisker could not verify this download, so nothing was changed. If it is broken or older than the current release key, run install.sh --uninstall (your settings are kept) and install again."
             fi
             say "Your installed Whisker is too old to check the download"
         elif [[ "$RELEASE_URL" == file://* ]]; then
