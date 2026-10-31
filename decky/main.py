@@ -227,6 +227,14 @@ def _write_config(config: dict) -> None:
     CONFIG_PATH.write_text(serialize_yaml(config))
 
 
+# Vulkan shares the Deck's GPU with the running game, so transcription would cost frames
+def default_backend_to_cpu(config: dict) -> bool:
+    if "backend" in config:
+        return False
+    config["backend"] = "cpu"
+    return True
+
+
 def _option_spec(parts: list[str]):
     if len(parts) == 1 and parts[0] in TOP_OPTIONS:
         return TOP_OPTIONS[parts[0]]
@@ -521,4 +529,9 @@ class Plugin:
         decky.logger.info("Whisker plugin unloaded")
 
     async def _migration(self) -> None:
-        pass
+        config = _read_config()
+        if default_backend_to_cpu(config):
+            _write_config(config)
+            rc, _ = await _run(["systemctl", "--user", "is-active", "whisker"])
+            if rc == 0:
+                await _run(["systemctl", "--user", "restart", "whisker"])

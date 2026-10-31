@@ -384,3 +384,12 @@ def test_failed_download_is_retried_at_most_once(tmp_path, monkeypatch, config_p
     assert not dest.exists()
     assert not main._part_path(model["file"]).exists()
     assert "Download failed" in asyncio.run(plugin.get_model_status())["error"]
+
+
+def test_default_backend_to_cpu_only_when_unset():
+    config = {"model": "m.gguf"}
+    assert main.default_backend_to_cpu(config)
+    assert config["backend"] == "cpu"
+    config = {"backend": "vulkan"}
+    assert not main.default_backend_to_cpu(config)
+    assert config["backend"] == "vulkan"
