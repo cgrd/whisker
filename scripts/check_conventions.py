@@ -5,7 +5,7 @@
   scripts/check_conventions.py --base origin/main               # committed work
   scripts/check_conventions.py --base origin/main --worktree    # plus uncommitted and untracked files
   scripts/check_conventions.py --staged                         # pre-commit hook
-  scripts/check_conventions.py --base B --head H --pr-title T --pr-body-file F   # CI
+  scripts/check_conventions.py --base B --head H --pr-title T --pr-body-file F --pr-author A   # CI
 """
 
 import argparse
@@ -47,6 +47,8 @@ CMAKE_PIN = re.compile(r"^\s*(?:set\(\w+_TAG\s+|GIT_TAG\s+)([^\s)]+)")
 CONVENTIONAL = re.compile(r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?: \S")
 SECTION = re.compile(r"^###\s+(.+?)\s*$", re.M)
 MD_LINK = re.compile(r"\]\(([^)\s]+)\)")
+# Bots whose PR bodies are generated and can't follow the template. Their titles and diffs are still checked.
+TEMPLATE_EXEMPT_AUTHORS = {"dependabot[bot]"}
 
 
 def git(*args):
@@ -132,10 +134,12 @@ def new_file_problems(path):
     return []
 
 
-def pr_problems(title, body):
+def pr_problems(title, body, author=None):
     problems = []
     if not CONVENTIONAL.match(title):
         problems.append(("pr-title", f"'{title}' is not a Conventional Commit title"))
+    if author in TEMPLATE_EXEMPT_AUTHORS:
+        return problems
     body = re.sub(r"<!--.*?-->", "", body or "", flags=re.S)
     parts = SECTION.split(body)
     sections = dict(zip(parts[1::2], parts[2::2], strict=True))
@@ -241,12 +245,13 @@ def main():
     parser.add_argument("--worktree", action="store_true")
     parser.add_argument("--pr-title")
     parser.add_argument("--pr-body-file")
+    parser.add_argument("--pr-author")
     args = parser.parse_args()
 
     problems = check(Change(args))
     if args.pr_title is not None:
         body = Path(args.pr_body_file).read_text(encoding="utf-8") if args.pr_body_file else ""
-        found = pr_problems(args.pr_title, body)
+        found = pr_problems(args.pr_title, body, args.pr_author)
         problems += [("pull request", 0, rule, detail) for rule, detail in found]
 
     for path, number, rule, detail in problems:

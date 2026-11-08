@@ -83,6 +83,8 @@ RUN fetch-source https://cairographics.org/releases/cairo-1.18.2.tar.xz \
 
 RUN fetch-source https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz \
         65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1 \
+        https://github.com/xiph/opus/releases/download/v1.5.2/opus-1.5.2.tar.gz \
+        https://ftp.osuosl.org/pub/xiph/releases/opus/opus-1.5.2.tar.gz \
     && cd opus-1.5.2 \
     && cmake -B build -DCMAKE_INSTALL_PREFIX=$PREFIX -DBUILD_SHARED_LIBS=OFF \
         -DOPUS_BUILD_TESTING=OFF -DOPUS_BUILD_PROGRAMS=OFF \
@@ -90,6 +92,7 @@ RUN fetch-source https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz \
 
 RUN fetch-source https://downloads.xiph.org/releases/opus/libopusenc-0.2.1.tar.gz \
         8298db61a8d3d63e41c1a80705baa8ce9ff3f50452ea7ec1c19a564fe106cbb9 \
+        https://ftp.osuosl.org/pub/xiph/releases/opus/libopusenc-0.2.1.tar.gz \
     && cd libopusenc-0.2.1 \
     && ./configure --prefix=$PREFIX --enable-static --disable-shared \
         --disable-doc --disable-examples \
