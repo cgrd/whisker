@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2](https://github.com/cgrd/whisker/compare/v1.4.1...v1.4.2) (2026-11-08)
+
+
+### Bug Fixes
+
+* **ci:** unblock Dependabot PRs ([#54](https://github.com/cgrd/whisker/issues/54)) ([67d80ba](https://github.com/cgrd/whisker/commit/67d80ba391af24575dbdb8ac515668288e5c74b6))
+
 ## [1.4.1](https://github.com/cgrd/whisker/compare/v1.4.0...v1.4.1) (2026-10-31)
 
 
